@@ -150,7 +150,7 @@ def craft(cmd):
             a = int(cmd[12:], 16)
         except:
             pass
-        rdcpcodec.craft_origin(a)
+        rdcpcodec.craft_destination(a)
     elif cmd.startswith("seq"):
         a = 0
         try:

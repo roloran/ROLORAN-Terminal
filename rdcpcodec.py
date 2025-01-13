@@ -40,12 +40,11 @@ rdcp_msgtypes = {
     0x0B: "RDCP Device Reset",
     0x0C: "RDCP Device Reboot",
     0x0D: "RDCP Device Maintenance",
+    0x0E: "RDCP Reset Infrastructure",
     0x0F: "RDCP Acknowledgment",
     0x10: "RDCP Official Announcement",
     0x11: "RDCP Reset All Announcements",
-    0x12: "RDCP Reset Infrastructure",
-    0x1A: "RDCP Emergency",
-    0x1B: "RDCP Citizen Request (CIRE)",
+    0x1A: "RDCP Citizen Report",
     0x1C: "RDCP Privileged Report",
     0x20: "RDCP Fetch All New Messages",
     0x21: "RDCP Fetch Message",
@@ -406,6 +405,16 @@ def rdcp_get_device_category(a):
             c = "DA Motschula"
         elif a == 0x0204:
             c = "DA Pudlach"
+        elif a == 0x0205:
+            c = "DA Schwabegg"
+        elif a == 0x0206:
+            c = "DA Heiligenstadt"
+        elif a == 0x0207:
+            c = "DA Wesnitzen"
+        elif a == 0x0208:
+            c = "DA Bach"
+        elif a == 0x0209:
+            c = "DA Berg ob Leifling"
     elif a < 0xAF00:
         c = "MG"
     elif a < 0xAFFF:
@@ -509,6 +518,16 @@ def get_relay_and_delay(v):
         relay = "DA Motschula"
     elif r == 0x04:
         relay = "DA Pudlach"
+    elif r == 0x05:
+        relay = "DA Schwabegg"
+    elif r == 0x06:
+        relay = "DA Heiligenstadt"
+    elif r == 0x07:
+        relay = "DA Wesnitzen"
+    elif r == 0x08:
+        relay = "DA Bach"
+    elif r == 0x09:
+        relay = "DA Berg ob Leifling"
     elif r == 0x0E:
         relay = "None"
     elif r == 0x0F:
@@ -621,40 +640,47 @@ def pretty_print_rdcp(m, colorstring="normal"):
                 or rdcp_messagetype == "0x1B"
                 or rdcp_messagetype == "0x1C"
             ):
-                udecoded = unishox2.decompress(bytes(rdcp[16:]), 512)
-                print(
-                    color[colorstring] + "RDCP Payload shox:" + color["normal"],
-                    udecoded,
-                )
+                pass
+                # (cannot display as payload is encrypted)
+                # udecoded = unishox2.decompress(bytes(rdcp[16:]), 512)
+                # print(
+                #     color[colorstring] + "RDCP Payload shox:" + color["normal"],
+                #     udecoded,
+                # )
             elif rdcp_messagetype == "0x10":
-                print(
-                    color[colorstring] + "RDCP Off. Ann.   : " + color["normal"], end=""
-                )
-                subtype = rdcp[16]
-                reference_number = 256 * int(rdcp[18]) + int(rdcp[17])
-                lifetime = 256 * int(rdcp[20]) + int(rdcp[19])
-                morefrag = rdcp[21]
-                if subtype == 0x22:
+                if rdcp_destination != "0xFFFF":
+                    # encrypted, cannot display
+                    pass
+                else:
                     print(
-                        "Message lifetime update for reference_number",
-                        reference_number,
-                        "to",
-                        lifetime,
+                        color[colorstring] + "RDCP Off. Ann.   : " + color["normal"],
+                        end="",
                     )
-                if (subtype == 0x10) or (subtype == 0x20):
-                    print(
-                        "New message with reference_number",
-                        reference_number,
-                        "and lifetime",
-                        lifetime,
-                        "with more_fragments",
-                        morefrag,
-                    )
-                    udecoded = unishox2.decompress(bytes(rdcp[22:]), 512)
-                    print(
-                        color[colorstring] + "OA Content       :" + color["normal"],
-                        udecoded,
-                    )
+                    subtype = rdcp[16]
+                    reference_number = 256 * int(rdcp[18]) + int(rdcp[17])
+                    lifetime = 256 * int(rdcp[20]) + int(rdcp[19])
+                    morefrag = rdcp[21]
+                    if subtype == 0x22:
+                        print(
+                            "Message lifetime update for reference_number",
+                            reference_number,
+                            "to",
+                            lifetime,
+                        )
+                    if (subtype == 0x10) or (subtype == 0x20):
+                        print(
+                            "New message with reference_number",
+                            reference_number,
+                            "and lifetime",
+                            lifetime,
+                            "with more_fragments",
+                            morefrag,
+                        )
+                        udecoded = unishox2.decompress(bytes(rdcp[22:]), 512)
+                        print(
+                            color[colorstring] + "OA Content       :" + color["normal"],
+                            udecoded,
+                        )
             else:
                 print(
                     color[colorstring] + "RDCP Payload hex : " + color["normal"], end=""
