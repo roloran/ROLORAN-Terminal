@@ -293,7 +293,7 @@ def modem_thread():
                 write_logfile(logfile_line)
                 l = color["normal"] + logfile_line
                 regex = (
-                    "^([a-zA-Z0-9-]+: )(ECHO: |INFO: |WARNING: |ERROR: |RXMETA |RX ).*$"
+                    "^([a-zA-Z0-9-]+: )(ECHO: |INFO: |WARNING: |ERROR: |RXMETA |RX |TXMETA |TX ).*$"
                 )
                 if re.search(regex, original_line):
                     l = l.replace("INFO:", color["yellow"] + "INFO:" + color["normal"])
@@ -307,6 +307,12 @@ def modem_thread():
                     )
                     l = l.replace(
                         ": RX ", ": " + color["green"] + "RX " + color["normal"]
+                    )
+                    l = l.replace(
+                        "TXMETA ", color["cyan"] + "TXMETA " + color["normal"]
+                    )
+                    l = l.replace(
+                        ": TX ", ": " + color["cyan"] + "TX " + color["normal"]
                     )
                 print(l)
                 readline.redisplay()
@@ -332,6 +338,12 @@ def modem_thread():
             sys.stdout.write("\r\x1b[K")
             line = line.rstrip()
             rdcpcodec.rx_verbose(str(line))
+            readline.redisplay()
+        pos = str(line).find("TX ")
+        if pos != -1:
+            sys.stdout.write("\r\x1b[K")
+            line = line.rstrip()
+            rdcpcodec.tx_verbose(str(line))
             readline.redisplay()
 
 

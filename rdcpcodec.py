@@ -729,7 +729,7 @@ def rx_verbose(rxstring):
         print(color["red"] + "Base64 decoding failed." + color["normal"])
         return
     length = len(decoded)
-    if length < 20:
+    if length < 16:
         print_hex_readable(decoded)
     if length < RDCP_HEADER_SIZE:
         print(
@@ -740,6 +740,42 @@ def rx_verbose(rxstring):
         )
         return
     pretty_print_rdcp(base64.b64decode(base64msg), "green")
+    return
+
+
+def tx_verbose(rxstring):
+    """Pretty-print a sent LoRa/RDCP packet given as LoRa modem TX line string"""
+    global last_message
+    regex = re.compile("^.*: TX (.*)")
+    m = regex.match(rxstring)
+    if "wallclock" in rxstring:
+        return
+    if "TXQi" in rxstring:
+        return
+    if "HELP" in rxstring:
+        return
+        print(color["red"] + "Not a valid TX line" + color["normal"])
+        return
+    base64msg = m.group(1)
+    try:
+        decoded = base64.b64decode(base64msg)
+        last_message = base64msg
+        last_message = last_message.replace("'", "")
+    except:
+        print(color["red"] + "Base64 decoding failed." + color["normal"])
+        return
+    length = len(decoded)
+    if length < 16:
+        print_hex_readable(decoded)
+    if length < RDCP_HEADER_SIZE:
+        print(
+            color["red"]
+            + "Not an RDCP message."
+            + color["normal"]
+            + " (shorter than RDCP header size)"
+        )
+        return
+    pretty_print_rdcp(base64.b64decode(base64msg), "cyan")
     return
 
 
