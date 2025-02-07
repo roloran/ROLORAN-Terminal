@@ -10,6 +10,8 @@ import unishox2
 import re
 import copy
 import rdcp_v04
+from cryptography.exceptions import InvalidKey, InvalidSignature
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 RDCP_HEADER_SIZE = 16
 
@@ -557,6 +559,19 @@ def verify_crc16(m):
     return real_crc == m_crc_i
 
 
+def getSharedSecret(origin):
+    """Return the HQ Shared Secret AES-256 key for a CIRE origin if available, otherwise None """
+    try:
+        f = open("aeskey-" + origin, "r")
+        content = f.readline()
+        f.close()
+        content = content.rstrip()
+        b = bytes.fromhex(content)
+        return b
+    except:
+        return None
+
+
 def pretty_print_rdcp(m, colorstring="normal"):
     """Pretty-print an RDCP message in a given color"""
     rdcp = craft_rdcp_from_message(m)
@@ -635,18 +650,52 @@ def pretty_print_rdcp(m, colorstring="normal"):
         if len(rdcp) > 16:
             if rdcp_messagetype == "0xFF":
                 pass
-            elif (
-                rdcp_messagetype == "0x1A"
-                or rdcp_messagetype == "0x1B"
-                or rdcp_messagetype == "0x1C"
-            ):
-                pass
-                # (cannot display as payload is encrypted)
-                # udecoded = unishox2.decompress(bytes(rdcp[16:]), 512)
-                # print(
-                #     color[colorstring] + "RDCP Payload shox:" + color["normal"],
-                #     udecoded,
-                # )
+            elif rdcp_messagetype == "0x1A": # CITIZEN REPORT
+                aeskey = getSharedSecret(rdcp_origin)
+                if aeskey == None:
+                    print(color["red"] + "No key material available, cannot decrypt" + color["normal"])
+                    return
+
+                iv = bytearray()
+                iv.append(rdcp[2])
+                iv.append(rdcp[3])
+                iv.append(rdcp[4])
+                iv.append(rdcp[5])
+                iv.append(rdcp[6])
+                iv.append(rdcp[7])
+                iv.append(rdcp[8])
+                iv.append(rdcp[9])
+                iv.append(0)
+                iv.append(0)
+                iv.append(0)
+                iv.append(0)
+
+                ad = iv[0:8]
+                ciphertext = rdcp[16:]
+
+                payload = bytearray()
+
+                aesgcm = AESGCM(aeskey)
+                try:
+                    payload = aesgcm.decrypt(bytes(iv), bytes(ciphertext), bytes(ad))
+                except:
+                    print(color["red"] + "Authentication / decryption failed. Bad message or key material." + color["normal"])
+                    return
+
+                print(color[colorstring] + "RDCP CIRE Type   : " + color["normal"], end ="");
+                subtype = payload[16-16]
+                if (subtype == 0):
+                    print("EMERGENCY")
+                if (subtype == 1):
+                    print("CITIZEN REQUEST")
+                if (subtype == 2):
+                    print("RESPONSE")
+                refnr = 256 * int(payload[18-16]) + int(payload[17-16])
+                print(color[colorstring] + "RDCP CIRE RefNr  : " + color["normal"], end ="");
+                print(hex_quad(refnr))
+                print(color[colorstring] + "RDCP CIRE Message: " + color["normal"], end ="");
+                message = unishox2.decompress(bytes(payload[19-16:]), 512)
+                print(message)
             elif rdcp_messagetype == "0x10":
                 if rdcp_destination != "0xFFFF":
                     # encrypted, cannot display
