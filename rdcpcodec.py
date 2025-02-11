@@ -12,6 +12,8 @@ import copy
 import rdcp_v04
 from cryptography.exceptions import InvalidKey, InvalidSignature
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+import schnorr
+import hashlib
 
 RDCP_HEADER_SIZE = 16
 
@@ -572,6 +574,63 @@ def getSharedSecret(origin):
         return None
 
 
+def getSchnorrPublicKey():
+    try:
+        f = open("schnorr.pub", "r")
+        content = f.readline()
+        content = content.rstrip()
+        f.close()
+        return content
+    except:
+        print("ERROR: No local Schnorr Public Key found")
+        return ""
+
+
+def getSchnorrPrivateKey():
+    try:
+        f = open("schnorr.priv", "r")
+        content = f.readline()
+        content = content.rstrip()
+        f.close()
+        return content
+    except:
+        print("ERROR: No local Schnorr Private Key found")
+        return ""
+
+def getSchnorrVerification(rdcp, num_bytes):
+    sch = schnorr.SchnorrSignature()
+    pubkey_from_file = getSchnorrPublicKey()
+    public_key = sch.import_public_key_hex(pubkey_from_file)
+
+    data_to_sign = bytearray()
+    for i in range(2,10):
+        data_to_sign.append(rdcp[i]) # add static RDCP Header fields: Origin, SeqNr, Destination, MsgType, PayloadLength
+    for i in range(0, num_bytes):
+        data_to_sign.append(rdcp[16+i]) # add the first num_bytes of the RDCP Payload
+    signature = bytearray()
+    for i in range(0, 65):
+        signature.append(rdcp[i + 16 + num_bytes])
+
+    m = hashlib.sha256()
+    m.update(data_to_sign)
+    hashdigest = m.digest()
+
+    hexstring1 = ''.join('{:02X}'.format(x) for x in signature[0:33])
+    hexstring2 = ''.join('{:02X}'.format(x) for x in signature[33:])
+    hexstring_of_signature = hexstring1 + ":" + hexstring2
+    sig = sch.import_signature_hex(hexstring_of_signature)
+
+    verification = False
+
+    try:
+        v = sch.verify(public_key, hashdigest, sig)
+        verification = v
+    except Exception as e:
+        print("Schnorr Verify Error:", e)
+
+    return verification
+
+
 def pretty_print_rdcp(m, colorstring="normal"):
     """Pretty-print an RDCP message in a given color"""
     rdcp = craft_rdcp_from_message(m)
@@ -650,6 +709,19 @@ def pretty_print_rdcp(m, colorstring="normal"):
         if len(rdcp) > 16:
             if rdcp_messagetype == "0xFF":
                 pass
+            elif rdcp_messagetype == "0x0F": # ACK
+                sigstatus = "(unsigned)"
+                if rdcp_payloadlength_decimal > 3:
+                    valid = getSchnorrVerification(rdcp, 3)
+                    if valid == True:
+                        sigstatus = "(signature OK)"
+                    else:
+                        sigstatus = "(signature BAD)"
+                acktype = rdcp[18]
+                confirmed = rdcp[16] + 256 * rdcp[17]
+                print(color[colorstring] + "RDCP ACK property: " + color["normal"], end ="")
+                print("RefNr", hex_quad(confirmed), "AckType", acktype, sigstatus)
+
             elif rdcp_messagetype == "0x1A": # CITIZEN REPORT
                 aeskey = getSharedSecret(rdcp_origin)
                 if aeskey == None:
@@ -751,8 +823,8 @@ def pretty_print_rdcp(m, colorstring="normal"):
                     + readable
                     + color["normal"]
                 )
-    except:
-        print(color["red"] + "Payload printing failed" + color["normal"])
+    except Exception as e:
+        print(color["red"] + "Payload printing failed" + color["normal"] + " (error: " + str(e) + ")")
 
     return
 
