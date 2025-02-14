@@ -722,6 +722,23 @@ def pretty_print_rdcp(m, colorstring="normal"):
                 print(color[colorstring] + "RDCP ACK property: " + color["normal"], end ="")
                 print("RefNr", hex_quad(confirmed), "AckType", acktype, sigstatus)
 
+            elif rdcp_messagetype == "0x0A": # TIMESTAMP
+                sigstatus = "(unsigned)"
+                if rdcp_payloadlength_decimal > 6:
+                    valid = getSchnorrVerification(rdcp, 6)
+                    if valid == True:
+                        sigstatus = "(signature OK)"
+                    else:
+                        sigstatus = "(signature BAD)"
+                year = rdcp[16]
+                month = rdcp[17]
+                day = rdcp[18]
+                hour = rdcp[19]
+                min = rdcp[20]
+                status = rdcp[21]
+                print(color[colorstring] + "RDCP TIMESTAMP   : " + color["normal"], end ="")
+                print(str(day).zfill(2) + "." + str(month).zfill(2) + "." + str(year+2025) + " " + str(hour).zfill(2) + ":" + str(min).zfill(2) + " [RDCP Infrastructure Mode " + str(status) + "]", sigstatus)
+
             elif rdcp_messagetype == "0x1A": # CITIZEN REPORT
                 aeskey = getSharedSecret(rdcp_origin)
                 if aeskey == None:
