@@ -54,6 +54,7 @@ rdcp_msgtypes = {
     0x21: "RDCP Fetch Message",
     0x2A: "RDCP Delivery Receipt",
     0x30: "RDCP Cryptographic Signature",
+    0x31: "RDCP Heartbeat",
 }
 
 
@@ -596,6 +597,7 @@ def getSchnorrPrivateKey():
     except:
         print("ERROR: No local Schnorr Private Key found")
         return ""
+
 
 def getSchnorrVerification(rdcp, num_bytes):
     sch = schnorr.SchnorrSignature()
