@@ -1,2 +1,5 @@
-.lora_*
+schnorr.priv
+schnorr.pub
+.lora*
 __pycache__
+aeskey-*

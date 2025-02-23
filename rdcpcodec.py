@@ -802,18 +802,22 @@ def pretty_print_rdcp(m, colorstring="normal"):
                     morefrag = rdcp[21]
                     if subtype == 0x22:
                         print(
-                            "Message lifetime update for reference_number",
+                            "Message lifetime update for RefNr",
                             reference_number,
                             "to",
                             lifetime,
                         )
                     if (subtype == 0x10) or (subtype == 0x20):
+                        if (subtype == 0x10):
+                            print("Non-Crisis ", end="")
+                        else:
+                            print("Crisis ", end="")
                         print(
-                            "New message with reference_number",
+                            "OA with RefNr",
                             reference_number,
-                            "and lifetime",
+                            "Lifetime",
                             lifetime,
-                            "with more_fragments",
+                            "MoreFrag",
                             morefrag,
                         )
                         udecoded = unishox2.decompress(bytes(rdcp[22:]), 512)
@@ -821,6 +825,15 @@ def pretty_print_rdcp(m, colorstring="normal"):
                             color[colorstring] + "OA Content       :" + color["normal"],
                             udecoded,
                         )
+            elif rdcp_messagetype == "0x30":
+                print(color[colorstring] + "RDCP Signature   : " + color["normal"], end="")
+                reference_number = 256 * int(rdcp[17]) + int(rdcp[16])
+                signature = rdcp[18:]
+                hexstring1 = ''.join('{:02X}'.format(x) for x in signature[0:33])
+                hexstring2 = ''.join('{:02X}'.format(x) for x in signature[33:])
+                hexstring_of_signature = hexstring1 + ":" + hexstring2
+                print("RefNr", reference_number, "SchorrSig:", hexstring_of_signature)
+
             else:
                 print(
                     color[colorstring] + "RDCP Payload hex : " + color["normal"], end=""
