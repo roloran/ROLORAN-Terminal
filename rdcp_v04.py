@@ -165,6 +165,7 @@ def rdcp_create_message(
     relay3=0xE0,  # relay/delay 3
     crc=0x0000,  # CRC-16
     payload=b"",
+    add_tag_length = 0 # add this value to payload length in case we got an AES-GCM tag
 ):
     """craft an RDCP message with header and given payload"""
     # the payload as bytearray
@@ -185,7 +186,7 @@ def rdcp_create_message(
     rdcp_msg.append(destination // 256)
     rdcp_msg.append(message_type)
     rdcp_msg.append(
-        len(payload) % 256
+        (len(payload) + add_tag_length) % 256
     )  # avoid too long payloads. We make sure here it fits into 1 byte.
     rdcp_msg.append(
         counter % 256
@@ -342,9 +343,12 @@ def hash_and_schnorr(data):
 
     return result
 
+def bytearray_to_string(b, sep=" "):
+    hexdata = sep.join('{:02X}'.format(x) for x in b)
+    return hexdata
 
 def craft_oa_pub(oatext, subtype, fragment_size=162, lifetime=10):
-    """Craft one or more OA fragments and the signature message"""
+    """Craft one or more public/broadcast OA fragments and the signature message"""
     compressed_text, original_size = unishox2.compress(oatext)
     l = len(compressed_text)
 
@@ -424,13 +428,88 @@ def craft_oa_pub(oatext, subtype, fragment_size=162, lifetime=10):
     payload.append(reference_number // 256)
     payload.extend(sig)
     rm = rdcp_create_message(sender=0x0010, origin=0x0010, payload=payload, counter=4, message_type=RDCP_MSGTYPE_SIGNATURE)
-    print("RDCP Signature message:", str(rdcp_message_as_base64(rm))[2:-1])
-
+    print("RDCP Signature message:", str(rdcp_message_as_base64(rm))[2:-1], end="\n\n")
     return
 
 
-def craft_oa_priv(oatext):
-    pass
+def craft_oa_priv(oatext, subtype, dest=0xAEFF, refnr=-1, lifetime=10):
+    """Craft a private OA with AEAD"""
+    compressed_text, original_size = unishox2.compress(oatext)
+    l = len(compressed_text)
+    if l > 162:
+        print("ERROR: Non-public OA exceeds 162 bytes Unishox2-compressed content")
+        return
+    else:
+        print("Private OA Content length:", len(oatext), "plain,", l, "compressed")
+
+    if (refnr == -1):
+        refnr = rdcp_next_oa_reference_number()
+
+    schnorrdata = bytearray()
+
+    payload = bytearray()
+    payload.append(subtype)
+    payload.append(refnr % 256)
+    payload.append(refnr // 256)
+    payload.append(lifetime % 256)
+    payload.append(lifetime // 256)
+    morefrags = 0
+    payload.append(morefrags % 256)
+    payload.extend(compressed_text)
+
+    plain_rm = rdcp_create_message(sender=0x0010, origin=0x0010, destination=dest, payload=payload, counter=4, message_type=RDCP_MSGTYPE_OFFICIAL_ANNOUNCEMENT, add_tag_length=16)
+
+    from rdcpcodec import getSharedSecret, hex_quad
+
+    aeskey = getSharedSecret(hex_quad(dest))
+    if aeskey == None:
+        print("No key material available, cannot encrypt")
+        return
+
+    iv = bytearray()
+    iv.append(plain_rm[2])
+    iv.append(plain_rm[3])
+    iv.append(plain_rm[4])
+    iv.append(plain_rm[5])
+    iv.append(plain_rm[6])
+    iv.append(plain_rm[7])
+    iv.append(plain_rm[8])
+    iv.append(plain_rm[9])
+    iv.append(0)
+    iv.append(0)
+    iv.append(0)
+    iv.append(0)
+
+    ad = iv[0:8] # additional data
+    plaintext = plain_rm[16:]
+
+    encrypted_payload = bytearray()
+
+    aesgcm = AESGCM(aeskey)
+    try:
+        encrypted_payload = aesgcm.encrypt(iv, plaintext, ad)
+    except:
+        print("Authenticated encryption failed. Bad message or key material.")
+        return
+
+    rm = bytearray()
+    rm.extend(plain_rm[0:16])
+    rm.extend(encrypted_payload)
+
+    pl = len(encrypted_payload)
+    rm[9] = pl % 256; # Update payload length RDCP Header field
+
+    # Update CRC
+    data_for_crc = bytearray()
+    data_for_crc.extend(rm[0:14])
+    data_for_crc.extend(rm[16:])
+    crc = crc16(data_for_crc)
+    rm[14] = crc % 256
+    rm[15] = crc // 256
+
+    print("Private OA:", str(rdcp_message_as_base64(rm))[2:-1], end="\n\n")
+    return
+
 
 # ============
 # main program
@@ -471,6 +550,6 @@ if __name__ == "__main__":
     craft_oa_pub("Hello world!", RDCP_MSGTYPE_OA_SUBTYPE_NONCRISIS)
 
     print ("Private official announcement")
-    craft_oa_priv("Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam volu")
+    craft_oa_priv("Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam volu", RDCP_MSGTYPE_OA_SUBTYPE_INQUIRY)
 
 # EOF

@@ -789,8 +789,69 @@ def pretty_print_rdcp(m, colorstring="normal"):
                 print(message)
             elif rdcp_messagetype == "0x10":
                 if rdcp_destination != "0xFFFF":
-                    # encrypted, cannot display
-                    pass
+                    print(color[colorstring] + "RDCP Private OA  : " + color["normal"], end="" )
+                    aeskey = getSharedSecret(rdcp_destination)
+                    if aeskey == None:
+                        print(color["red"] + "No key material available, cannot decrypt" + color["normal"])
+                        return
+
+                    iv = bytearray()
+                    iv.append(rdcp[2])
+                    iv.append(rdcp[3])
+                    iv.append(rdcp[4])
+                    iv.append(rdcp[5])
+                    iv.append(rdcp[6])
+                    iv.append(rdcp[7])
+                    iv.append(rdcp[8])
+                    iv.append(rdcp[9])
+                    iv.append(0)
+                    iv.append(0)
+                    iv.append(0)
+                    iv.append(0)
+
+                    ad = iv[0:8]
+                    ciphertext = rdcp[16:]
+
+                    payload = bytearray()
+
+                    aesgcm = AESGCM(aeskey)
+                    try:
+                        payload = aesgcm.decrypt(bytes(iv), bytes(ciphertext), bytes(ad))
+                    except:
+                        print(color["red"] + "Authentication / decryption failed. Bad message or key material." + color["normal"])
+                        return
+
+                    subtype = payload[0]
+                    reference_number = 256 * int(payload[2]) + int(payload[1])
+                    lifetime = 256 * int(payload[4]) + int(payload[3])
+
+                    if subtype == 0x22:
+                        print(
+                            "Message lifetime update for RefNr",
+                            reference_number,
+                            "to",
+                            lifetime,
+                        )
+                    else:
+                        if (subtype == 0x10):
+                            print("Private Non-Crisis ", end="")
+                        elif (subtype == 0x20):
+                            print("Public Crisis ", end="")
+                        elif (subtype == 0x30):
+                            print("FEEDBACK ", end="")
+                        elif (subtype == 0x31):
+                            print("INQUIRY ", end="")
+                        print(
+                            "OA with RefNr",
+                            reference_number,
+                            "Lifetime",
+                            lifetime,
+                        )
+                        udecoded = unishox2.decompress(bytes(payload[6:]), 512)
+                        print(
+                            color[colorstring] + "OA Content       :" + color["normal"],
+                            udecoded,
+                        )
                 else:
                     print(
                         color[colorstring] + "RDCP Off. Ann.   : " + color["normal"],
@@ -809,9 +870,9 @@ def pretty_print_rdcp(m, colorstring="normal"):
                         )
                     if (subtype == 0x10) or (subtype == 0x20):
                         if (subtype == 0x10):
-                            print("Non-Crisis ", end="")
+                            print("Public Non-Crisis ", end="")
                         else:
-                            print("Crisis ", end="")
+                            print("Public Crisis ", end="")
                         print(
                             "OA with RefNr",
                             reference_number,
