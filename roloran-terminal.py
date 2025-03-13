@@ -293,7 +293,7 @@ def modem_thread():
                 write_logfile(logfile_line)
                 l = color["normal"] + logfile_line
                 regex = (
-                    "^([a-zA-Z0-9-]+: )(ECHO: |INFO: |WARNING: |ERROR: |RXMETA |RX |TXMETA |TX ).*$"
+                    r"^([a-zA-Z0-9-{} !?:]+: )(ECHO: |INFO: |WARNING: |ERROR: |RXMETA |RX |TXMETA |TX ).*$"
                 )
                 if re.search(regex, original_line):
                     l = l.replace("INFO:", color["yellow"] + "INFO:" + color["normal"])
