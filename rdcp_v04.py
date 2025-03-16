@@ -483,6 +483,8 @@ def craft_oa_priv(oatext, subtype, dest=0xAEFF, refnr=-1, lifetime=10):
     ad = iv[0:8] # additional data
     plaintext = plain_rm[16:]
 
+    print("IV:", bytearray_to_string(iv), ", AD:", bytearray_to_string(ad));
+
     encrypted_payload = bytearray()
 
     aesgcm = AESGCM(aeskey)
@@ -491,6 +493,8 @@ def craft_oa_priv(oatext, subtype, dest=0xAEFF, refnr=-1, lifetime=10):
     except:
         print("Authenticated encryption failed. Bad message or key material.")
         return
+
+    print("Ciphertext + Tag:", bytearray_to_string(encrypted_payload));
 
     rm = bytearray()
     rm.extend(plain_rm[0:16])

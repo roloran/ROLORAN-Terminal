@@ -934,7 +934,11 @@ def rx_verbose(rxstring):
             return
         print(color["red"] + "Not a valid RX line" + color["normal"])
         return
-    base64msg = m.group(1)
+    base64msg = ""
+    try:
+        base64msg = m.group(1)
+    except:
+        return
     try:
         decoded = base64.b64decode(base64msg)
         last_message = base64msg
@@ -970,7 +974,11 @@ def tx_verbose(rxstring):
         return
         print(color["red"] + "Not a valid TX line" + color["normal"])
         return
-    base64msg = m.group(1)
+    base64msg = ""
+    try:
+        base64msg = m.group(1)
+    except:
+        return
     try:
         decoded = base64.b64decode(base64msg)
         last_message = base64msg
