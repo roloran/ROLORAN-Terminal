@@ -41,7 +41,7 @@ history_filename = ".lora_history"
 log_filename = ".lora_logfile"
 script_glob = "*.rterm"
 
-enable_logfile = 1
+enable_logfile = 0
 enable_history = 1
 script_line_delay = 1
 
@@ -285,7 +285,11 @@ def modem_thread():
         try:
             line = ser.readline()
             if len(line) > 1:
-                l = line.decode().strip()
+                l = ""
+                try:
+                    l = line.decode().strip()
+                except:
+                    continue
                 original_line = l
                 sys.stdout.write("\r\x1b[K")
                 ct = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
