@@ -875,7 +875,7 @@ def pretty_print_rdcp(m, colorstring="normal"):
                             print("Public Crisis ", end="")
                         print(
                             "OA with RefNr",
-                            reference_number,
+                            reference_number, hex(reference_number).upper(),
                             "Lifetime",
                             lifetime,
                             "MoreFrag",
