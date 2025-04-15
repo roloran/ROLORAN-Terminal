@@ -18,7 +18,8 @@ class SchnorrSignature:
         k = ecdsa.util.randrange(self.order)
         R = self.generator * k
 
-        e = self.hash_function(R.x(), message) % self.order
+        # e = self.hash_function(R.x(), message) % self.order
+        e = self.hash_function(R, message) % self.order
 
         s = (e * private_key) % self.order
         s = (k - s) % self.order
@@ -27,7 +28,8 @@ class SchnorrSignature:
     def verify(self, public_key, message, signature):
         R, s = signature
 
-        e = self.hash_function(R.x(), message) % self.order
+        # e = self.hash_function(R.x(), message) % self.order
+        e = self.hash_function(R, message) % self.order
 
         R_prime = self.generator * s
         e_pubkey = public_key * e
@@ -38,10 +40,13 @@ class SchnorrSignature:
     def hash_function(self, R_x, message):
         """ Hash function combining R_x and the message """
         h = hashlib.sha256()
-        #h.update(R_x.to_bytes(32, 'big'))
-        h.update(message)
-        res = h.digest()
-        return int.from_bytes(res, 'big')
+        ##h.update(R_x.to_bytes(32, 'big'))
+        #h.update(message)
+        #res = h.digest()
+        #return int.from_bytes(res, 'big')
+        h.update(R_x.to_bytes(encoding='compressed'))
+        h.update(message) # .encode('utf-8'))
+        return int.from_bytes(h.digest(), 'big')
 
     def export_public_key_hex(self, key):
         """ Export a key (private or public) as a hexadecimal string """
