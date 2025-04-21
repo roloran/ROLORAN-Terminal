@@ -55,6 +55,7 @@ rdcp_msgtypes = {
     0x2A: "RDCP Delivery Receipt",
     0x30: "RDCP Cryptographic Signature",
     0x31: "RDCP Heartbeat",
+    0x32: "RDCP RTC",
 }
 
 
@@ -894,6 +895,9 @@ def pretty_print_rdcp(m, colorstring="normal"):
                 hexstring2 = ''.join('{:02X}'.format(x) for x in signature[33:])
                 hexstring_of_signature = hexstring1 + ":" + hexstring2
                 print("RefNr", reference_number, "SchorrSig:", hexstring_of_signature)
+
+            elif rdcp_messagetype == "0x32":
+                pass
 
             else:
                 print(

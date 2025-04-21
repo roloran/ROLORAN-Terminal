@@ -55,6 +55,7 @@ RDCP_MSGTYPE_DELIVERY_RECEIPT = 0x2A
 RDCP_MSGTYPE_SCHEDULE_RCPT = 0x2B
 RDCP_MSGTYPE_SIGNATURE = 0x30
 RDCP_MSGTYPE_HEARTBEAT = 0x31
+RDCP_MSGTYPE_RTC = 0x32
 
 RDCP_MSGTYPE_OA_SUBTYPE_RESERVED = 0x00
 RDCP_MSGTYPE_OA_SUBTYPE_NONCRISIS = 0x10
@@ -515,6 +516,87 @@ def craft_oa_priv(oatext, subtype, dest=0xAEFF, refnr=-1, lifetime=10):
     return
 
 
+def rdcp_create_message_inlinesig(
+    sender=rdcp_my_address,  # we are the sender by default
+    origin=rdcp_my_address,  # we are the origin by default
+    sequence_number=-1,  # get a new sequence_number if none given
+    destination=0xFFFF,  # broadcast destination by default
+    message_type=RDCP_MSGTYPE_TEST,  # test message by default
+    counter=0x00,  # retransmission counter
+    relay1=0x00,  # relay/delay 1
+    relay2=0xEE,  # relay/delay 2
+    relay3=0xEE,  # relay/delay 3
+    crc=0x0000,  # CRC-16
+    payload=b"",
+    add_tag_length = 0 # add this value to payload length in case we got an AES-GCM tag
+):
+    """craft an RDCP message with header and given payload as well as inline Schnorr signature"""
+    rdcp_msg = bytearray()
+
+    if sequence_number == -1:
+        sequence_number = rdcp_next_sequence_number()
+
+    # prepare the header
+    rdcp_msg.append(sender % 256)  # lower byte comes first
+    rdcp_msg.append(sender // 256)  # higher byte comes second
+    rdcp_msg.append(origin % 256)
+    rdcp_msg.append(origin // 256)
+    rdcp_msg.append(sequence_number % 256)
+    rdcp_msg.append(sequence_number // 256)
+    rdcp_msg.append(destination % 256)
+    rdcp_msg.append(destination // 256)
+    rdcp_msg.append(message_type)
+    rdcp_msg.append(
+        (len(payload) + 65 + add_tag_length) % 256
+    )  # avoid too long payloads. We make sure here it fits into 1 byte.
+    rdcp_msg.append(
+        counter % 256
+    )  # fit into 1 byte if someone created a too large counter
+    rdcp_msg.append(
+        relay1 % 256
+    )  # fit into 1 byte if someone created a too large value
+    rdcp_msg.append(
+        relay2 % 256
+    )  # fit into 1 byte if someone created a too large value
+    rdcp_msg.append(
+        relay3 % 256
+    )  # fit into 1 byte if someone created a too large value
+
+    schnorrdata = bytearray()
+    schnorrdata.extend(rdcp_msg[2:4]) # origin
+    schnorrdata.extend(rdcp_msg[4:6]) # seqnr
+    schnorrdata.extend(rdcp_msg[6:8]) # dest
+    schnorrdata.extend(rdcp_msg[8:10]) # msgtype, payload length
+    schnorrdata.extend(payload)
+    sig = hash_and_schnorr(schnorrdata)
+    payload.extend(sig)
+
+    data_for_crc = bytearray()
+    data_for_crc.extend(rdcp_msg)
+    data_for_crc.extend(payload)
+    crc = crc16(data_for_crc)
+    rdcp_msg.append(crc % 256)
+    rdcp_msg.append(crc // 256)
+
+    # append the payload
+    rdcp_msg.extend(payload)
+
+    return rdcp_msg
+
+
+def craft_rtc(rtc="20250421T085527Z", alarm=0, reset=0, persist=0):
+    rtc_payload = bytearray()
+    rtc_payload.append(alarm)
+    rtc_payload.append(reset)
+    rtc_payload.append(persist)
+    for c in rtc:
+        rtc_payload.append(ord(c))
+
+    rm = rdcp_create_message_inlinesig(message_type=RDCP_MSGTYPE_RTC, destination=0x0200, payload=rtc_payload)
+    print("RTC:", str(rdcp_message_as_base64(rm))[2:-1], end="\n\n")
+    return
+
+
 # ============
 # main program
 # ============
@@ -553,7 +635,10 @@ if __name__ == "__main__":
     print("Public official announcement (short)")
     craft_oa_pub("Hello world!", RDCP_MSGTYPE_OA_SUBTYPE_NONCRISIS)
 
-    print ("Private official announcement")
+    print("Private official announcement")
     craft_oa_priv("Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam volu", RDCP_MSGTYPE_OA_SUBTYPE_INQUIRY)
+
+    print("RTC")
+    craft_rtc("20250421T085527Z", 0, 0, 0)
 
 # EOF
