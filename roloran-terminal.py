@@ -72,7 +72,7 @@ def rterm_setup(filename):
     candidates = []
     if not os.path.exists(filename):
         mypattern = r"/dev/*"
-        regex = r"cu\.usb.*|ttyACM.*|usbserial.*"
+        regex = r"cu\.usb.*|ttyACM.*|ttyUSB.*|usbserial.*"
         for fn in glob.glob(mypattern):
             if re.search(regex, fn):
                 candidates.append(fn)

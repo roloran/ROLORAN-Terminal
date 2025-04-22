@@ -8,7 +8,7 @@ ROLORAN-Terminal is a text-based/line-oriented application to interact with LoRa
 
 ## Installing ROLORAN-Terminal
 
-ROLORAN-Terminal is implemented in Python, so you need a working Python3 environment and some Python modules (PySerial, py3-unishox2; commonly used in RDCP-related tools) installed. Clone the repository and make `roloran-terminal.py` executable.
+ROLORAN-Terminal is implemented in Python, so you need a working Python3 environment and some Python modules (pyserial, unishox2-py3, ecdsa; commonly used in RDCP-related tools) installed. Clone the repository and make `roloran-terminal.py` executable.
 
 For macOS users, a PIP-installable wheel is provided for py3-unishox2 as we faced memory management issues with certain C compilers and newer macOS versions.
 
