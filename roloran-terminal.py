@@ -41,12 +41,15 @@ history_filename = ".lora_history"
 log_filename = ".lora_logfile"
 script_glob = "*.rterm"
 
-enable_logfile = 0
+enable_logfile = 1
 enable_history = 1
 script_line_delay = 1
 
 abort_globally = 0
 forced_exit = 0
+
+inject_has = False
+inject_filename = ""
 
 color = {
     "red": "\u001b[31m",
@@ -231,6 +234,7 @@ def keyboard_thread():
     global forced_exit
     global ser
     global current_mode
+    global inject_has, inject_filename
 
     while True:
         if abort_globally == 1:
@@ -254,6 +258,9 @@ def keyboard_thread():
                 if line == "craft":
                     current_mode = MODE_CRAFT
                     print(color["magenta"] + "Switching to CRAFT mode...")
+                elif line.startswith("inject "):
+                    inject_has = True
+                    inject_filename = line[7:]
                 else:
                     line += "\n"
                     ser.write(str.encode(line))
@@ -358,11 +365,22 @@ def script_thread():
     global script_glob
     global ser
     global script_line_delay
+    global inject_has, inject_filename
     while True:
         if forced_exit == 1:
             break
         if abort_globally == 1:
             break
+        if inject_has:
+            inject_has = False
+            with open(inject_filename) as f:
+                sys.stdout.write("\r\x1b[K")
+                print(color["magenta"] + "Injecting script " + inject_filename + "...")
+                for l in f:
+                    print("> " + l, end="")
+                    ser.write(str.encode(l))
+                    sleep(script_line_delay)
+                readline.redisplay()
         sleep(1)
         for fn in glob.glob(script_glob):
             with open(fn, "r") as f:

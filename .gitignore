@@ -3,3 +3,6 @@ schnorr.pub
 .lora*
 __pycache__
 aeskey-*
+*.done
+*template*.txt
+rdcp-logar.py
