@@ -6,3 +6,5 @@ aeskey-*
 *.done
 *template*.txt
 rdcp-logar.py
+*.txt
+*.csv
