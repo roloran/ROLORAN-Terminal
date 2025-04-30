@@ -46,6 +46,22 @@ def getmt(mt):
         result = "Heartbeat"
     elif mt == "0A":
         result = "Timestamp"
+    elif mt == "0F":
+        result = "ACK"
+    elif mt == "05":
+        result = "DAS REQ"
+    elif mt == "1A":
+        result = "CIRE"
+    elif mt == "06":
+        result = "DAS RESP"
+    elif mt == "01":
+        result = "PING"
+    elif mt == "02":
+        result = "PONG"
+    elif mt == "20":
+        result = "FETCHALL"
+    elif mt == "2A":
+        result = "RECEIPT"
     return result
 
 
