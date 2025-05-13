@@ -36,7 +36,14 @@ import serial
 import datetime
 import rdcpcodec
 
+try:
+    from bleuart import ble_set_devicename, ble_rx_get, ble_tx, ble_rx_available, ble_start
+    import asyncio
+except:
+    pass
+
 device = os.environ.get("LORADEV", "/dev/cu.usbmodem1201")
+use_ble = False
 history_filename = ".lora_history"
 log_filename = ".lora_logfile"
 script_glob = "*.rterm"
@@ -71,9 +78,10 @@ def rterm_setup(filename):
     global device
     global history_filename
     global log_filename
+    global use_ble
 
     candidates = []
-    if not os.path.exists(filename):
+    if not os.path.exists(filename) and not filename.startswith("BLE:"):
         mypattern = r"/dev/*"
         regex = r"cu\.usb.*|ttyACM.*|ttyUSB.*|usbserial.*"
         for fn in glob.glob(mypattern):
@@ -106,9 +114,14 @@ def rterm_setup(filename):
             sys.exit(1)
 
     device = filename
-    print(color["normal"] + "Device name: ", device, "for serial input/output.")
+    print(color["normal"] + "Device name:", device, "for serial input/output.")
+
+    if device.startswith("BLE:"):
+        print(color["red"] + "Switching to BLE mode, please wait for successful or failed BLE connection!" + color["normal"])
+        use_ble = True
 
     suffix = device.replace("/", "_")
+    suffix = suffix.replace(":", "_")
     history_filename += "." + suffix
     log_filename += "." + suffix
 
@@ -233,6 +246,7 @@ def keyboard_thread():
     global abort_globally
     global forced_exit
     global ser
+    global use_ble
     global current_mode
     global inject_has, inject_filename
 
@@ -263,7 +277,10 @@ def keyboard_thread():
                     inject_filename = line[7:]
                 else:
                     line += "\n"
-                    ser.write(str.encode(line))
+                    if use_ble:
+                        ble_tx(line)
+                    else:
+                        ser.write(str.encode(line))
             else:
                 if line == "interactive":
                     current_mode = MODE_INTERACTIVE
@@ -273,7 +290,10 @@ def keyboard_thread():
                     if (len(to_print)) != 0:
                         print(to_print)
                     if (len(to_send)) != 0:
-                        ser.write(str.encode(to_send))
+                        if use_ble:
+                            ble_tx(to_send)
+                        else:
+                            ser.write(str.encode(to_send))
     abort_globally = 1
 
 
@@ -283,14 +303,22 @@ def modem_thread():
     global forced_exit
     global ser
     global device
+    global use_ble
 
     while True:
         line = ""
         if abort_globally == 1:
-            ser.close()
+            if use_ble == False:
+                ser.close()
+            print("Modem thread aborting globally")
             break
         try:
-            line = ser.readline()
+            line = ""
+            if use_ble:
+                if ble_rx_available():
+                    line = str.encode(ble_rx_get())
+            else:
+                line = ser.readline()
             if len(line) > 1:
                 l = ""
                 try:
@@ -330,7 +358,10 @@ def modem_thread():
         except:
             abort_globally = 1
             print(color["red"] + "Serial read failed - lost connection?")
-            ser.close()
+            if not use_ble:
+                ser.close()
+            else:
+                sys.exit(1)
             while True:
                 try:
                     print(color["red"] + "Attempting to reconnect...")
@@ -364,6 +395,7 @@ def script_thread():
     global forced_exit
     global script_glob
     global ser
+    global use_ble
     global script_line_delay
     global inject_has, inject_filename
     while True:
@@ -378,7 +410,10 @@ def script_thread():
                 print(color["magenta"] + "Injecting script " + inject_filename + "...")
                 for l in f:
                     print("> " + l, end="")
-                    ser.write(str.encode(l))
+                    if use_ble:
+                        ble_tx(l)
+                    else:
+                        ser.write(str.encode(l))
                     sleep(script_line_delay)
                 readline.redisplay()
         sleep(1)
@@ -388,7 +423,10 @@ def script_thread():
                 print(color["magenta"] + "Injecting script " + fn + "...")
                 for l in f:
                     print("> " + l, end="")
-                    ser.write(str.encode(l))
+                    if use_ble:
+                        ble_tx(l)
+                    else:
+                        ser.write(str.encode(l))
                     sleep(script_line_delay)
                 readline.redisplay()
             os.rename(fn, fn + ".done")
@@ -399,21 +437,30 @@ if __name__ == "__main__":
     print(" ")
     rterm_setup(os.environ.get("LORADEV", "/dev/ttyACM0"))
 
-    try:
-        ser = serial.Serial(port=device, baudrate=115200, timeout=1)
-    except:
-        print(
-            color["red"]
-            + "Cannot open device "
-            + device
-            + ", set LORADEV environment variable to proper filename!"
-        )
-        sys.exit(1)
+    if use_ble:
+        ble_set_devicename(device[4:])
+    else:
+        try:
+            ser = serial.Serial(port=device, baudrate=115200, timeout=1)
+            print("Connected to", device)
+        except:
+            print(
+                color["red"]
+                + "Cannot open device "
+                + device
+                + ", set LORADEV environment variable to proper filename!"
+            )
+            sys.exit(1)
 
     try:
         readline.read_history_file(history_filename)
     except:
         pass
+
+    t0 = None
+    if use_ble:
+        t0 = threading.Thread(target=ble_start)
+        t0.start()
 
     t1 = threading.Thread(target=keyboard_thread)
     t2 = threading.Thread(target=modem_thread)
@@ -425,9 +472,13 @@ if __name__ == "__main__":
     t2.join()
     t3.join()
 
+    if use_ble:
+        t0.join()
+
     if enable_history == 1:
         readline.write_history_file(history_filename)
 
+    print("Connection to", device, "finished")
     sys.exit(0)
 
 # EOF
