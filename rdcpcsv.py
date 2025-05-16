@@ -29,6 +29,8 @@ def getname(rdcpa):
         result = "Berg ob Leifling"
     elif rdcpa == "0010":
         result = "AutoHQ"
+    elif rdcpa == "0001":
+        result = "RealHQ"
     elif rdcpa == "00FF":
         result = "HQ Multicast"
     elif rdcpa == "FFFF":
@@ -46,6 +48,12 @@ def getmt(mt):
         result = "Heartbeat"
     elif mt == "0A":
         result = "Timestamp"
+    elif mt == "0B":
+        result = "Reset Dev"
+    elif mt == "0C":
+        result = "Reboot"
+    elif mt == "0E":
+        result = "Reset Infra"
     elif mt == "0F":
         result = "ACK"
     elif mt == "05":
@@ -58,6 +66,10 @@ def getmt(mt):
         result = "PING"
     elif mt == "02":
         result = "PONG"
+    elif mt == "09":
+        result = "BlockDev"
+    elif mt == "11":
+        result = "Reset OA"
     elif mt == "20":
         result = "FETCHALL"
     elif mt == "2A":
