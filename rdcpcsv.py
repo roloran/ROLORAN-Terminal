@@ -27,10 +27,22 @@ def getname(rdcpa):
         result = "Bach"
     elif rdcpa == "0209":
         result = "Berg ob Leifling"
+    elif rdcpa == "020A":
+        result = "VS West"
+    elif rdcpa == "020B":
+        result = "VS Ost"
     elif rdcpa == "0010":
         result = "AutoHQ"
     elif rdcpa == "0001":
-        result = "RealHQ"
+        result = "HQ Gemeinde"
+    elif rdcpa == "0002":
+        result = "HQ FF Neuhaus"
+    elif rdcpa == "0003":
+        result = "HQ FF Bach"
+    elif rdcpa == "0004":
+        result = "HQ FF Schwabegg"
+    elif rdcpa == "0005":
+        result = "HQ Reserve"
     elif rdcpa == "00FF":
         result = "HQ Multicast"
     elif rdcpa == "FFFF":
@@ -52,6 +64,8 @@ def getmt(mt):
         result = "Reset Dev"
     elif mt == "0C":
         result = "Reboot"
+    elif mt == "0D":
+        result = "Maintenance"
     elif mt == "0E":
         result = "Reset Infra"
     elif mt == "0F":
@@ -99,6 +113,10 @@ def getrelaybyid(id):
         result = "Bach"
     elif id == "9":
         result = "Berg ob Leifling"
+    elif id == "A":
+        result = "VS West"
+    elif id == "B":
+        result = "VS Ost"
     elif id == "C":
         result = "Config Fail"
     elif id == "D":
@@ -134,7 +152,7 @@ def print_line(m1, m2):
     d, t = m1.split(" ")
     print(d, t, sep=",", end=",")
 
-    device,sincelast,now,cfest,cfestrel,length,refnr,futts,sender,origin,seqnr,destination,mt,counter,r1,r2,r3,crc,airtime,frequency = m2.split(",")
+    device,sincelast,now,cfest,cfestrel,length,refnr,futts,sender,origin,seqnr,destination,mt,counter,r1,r2,r3,crc,airtime,frequency,rssi,snr = m2.split(",")
 
     timeslot = 8 - int(futts)
     osender = sender
@@ -148,8 +166,11 @@ def print_line(m1, m2):
 
     at = int(airtime)
 
+    if (timeslot == 8 or timeslot == 0) and frequency[0] == '8':
+        timeslot = "single"
+
     print(now, sincelast + " ms", str(at+1000) + " ms", cfestrel + " ms",
-          length + " bytes", airtime + " ms", timeslot, counter, futts,
+          length + " bytes", airtime + " ms", rssi, snr, timeslot, counter, futts,
           origin, sender, relay1, relay2, relay3,
           mt, refnr,
           destination, seqnr,
@@ -169,7 +190,7 @@ logfile_name = sys.argv[1]
 p = re.compile(r'^\[(.*)\].*RDCPCSV: (.*)')
 
 with open(logfile_name, 'r') as logfile:
-    print("Date,Time,Timestamp,SinceLast,TSduration,CFEstRel,Length,Airtime,Timeslot,Counter,FutTS,Origin,Sender,Relay1,Relay2,Relay3,Type,RefNr,Destination,SeqNr,Frequency,Device")
+    print("Date,Time,Timestamp,SinceLast,TSduration,CFEstRel,Length,Airtime,RSSI,SNR,Timeslot,Counter,FutTS,Origin,Sender,Relay1,Relay2,Relay3,Type,RefNr,Destination,SeqNr,Frequency,Device")
     for line in logfile:
         l = line.strip()
         m = p.match(l)
