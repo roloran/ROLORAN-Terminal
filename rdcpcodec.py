@@ -2,10 +2,16 @@
 
 import base64
 
-try:
-    import gnureadline as readline
-except ImportError:
-    import readline
+import platform
+if platform.system() == "Windows":
+    import pyreadline3
+    readline = pyreadline3.Readline()
+else:
+    try:
+        import gnureadline as readline
+    except ImportError:
+        import readline
+
 import unishox2
 import re
 import copy

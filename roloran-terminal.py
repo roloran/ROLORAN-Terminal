@@ -26,10 +26,16 @@ import os
 import re
 import glob
 
-try:
-    import gnureadline as readline
-except ImportError:
-    import readline
+import platform
+
+if platform.system() == "Windows":
+    import pyreadline3
+    readline = pyreadline3.Readline()
+else:
+    try:
+        import gnureadline as readline
+    except ImportError:
+        import readline
 
 import sys
 import serial
@@ -41,6 +47,8 @@ try:
     import asyncio
 except:
     pass
+
+import serial.tools.list_ports
 
 device = os.environ.get("LORADEV", "/dev/cu.usbmodem1201")
 use_ble = False
@@ -72,7 +80,6 @@ MODE_INTERACTIVE = 0x01
 MODE_CRAFT = 0x02
 current_mode = MODE_INTERACTIVE
 
-
 def rterm_setup(filename):
     """Prepare filenames to use (device, history, logfile)"""
     global device
@@ -82,12 +89,10 @@ def rterm_setup(filename):
 
     candidates = []
     if not os.path.exists(filename) and not filename.startswith("BLE:"):
-        mypattern = r"/dev/*"
-        regex = r"cu\.usb.*|ttyACM.*|ttyUSB.*|usbserial.*"
-        for fn in glob.glob(mypattern):
+        regex = r"cu\.usb.*|ttyACM.*|ttyUSB.*|usbserial.*|COM[0-9]+"
+        for fn in list(map(lambda x: x.device, serial.tools.list_ports.comports())):
             if re.search(regex, fn):
                 candidates.append(fn)
-
         print(
             color["red"] + "LORADEV (",
             filename,
