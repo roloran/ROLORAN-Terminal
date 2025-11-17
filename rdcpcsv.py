@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 
 import datetime
+import os
 import rdcpcodec
 import sys
 import re
+
+import argparse
 
 def getname(rdcpa):
     result = "0x" + rdcpa
@@ -148,11 +151,13 @@ def getrelay(sender, r1, r2, r3):
     return (res1, res2, res3)
 
 
-def print_line(m1, m2):
+def format_log_line(m1, m2):
     d, t = m1.split(" ")
-    print(d, t, sep=",", end=",")
 
-    device,sincelast,now,cfest,cfestrel,length,refnr,futts,sender,origin,seqnr,destination,mt,counter,r1,r2,r3,crc,airtime,frequency,rssi,snr = m2.split(",")
+    try:
+        device,sincelast,now,cfest,cfestrel,length,refnr,futts,sender,origin,seqnr,destination,mt,counter,r1,r2,r3,crc,airtime,frequency,rssi,snr = m2.split(",")
+    except ValueError:
+        return f"{d}, {t}, Broken line\n"
 
     timeslot = 8 - int(futts)
     osender = sender
@@ -169,33 +174,105 @@ def print_line(m1, m2):
     if (timeslot == 8 or timeslot == 0) and frequency[0] == '8':
         timeslot = "single"
 
-    print(now, sincelast + " ms", str(at+1000) + " ms", cfestrel + " ms",
-          length + " bytes", airtime + " ms", rssi, snr, timeslot, counter, futts,
-          origin, sender, relay1, relay2, relay3,
-          mt, refnr,
-          destination, seqnr,
-          frequency, device, sep=",")
+    content = [
+        d,
+        t,
+        now,
+        sincelast + " ms",
+        str(at+1000) + " ms",
+        cfestrel + " ms",
+        length + " bytes",
+        airtime + " ms",
+        rssi,
+        snr,
+        timeslot,
+        counter,
+        futts,
+        origin,
+        sender,
+        relay1,
+        relay2,
+        relay3,
+        mt,
+        refnr,
+        destination,
+        seqnr,
+        frequency,
+        device
+    ]
 
-    return
+    return ",".join(content) + "\n"
+
+def print_line(m1, m2):
+    print(format_log_line(m1,m2))
 
 
 # Main program
 
-if len(sys.argv) < 2:
-    print("Usage:", sys.argv[0], "logfilename")
+parser = argparse.ArgumentParser(description='Process RDCP log file and output CSV.')
+parser.add_argument('-i', '--input-file', type=str, help='Path to RDCP log file to process', required=True, action='store')
+parser.add_argument('-s', '--store', action='store', help="Path to output folder for CSV file(s)")
+parser.add_argument('-a', '--append', action='store_true', help='Append data to output file instead of overwriting')
+parser.add_argument('-d', '--daily', action='store_true', help='Splits output into multiple files based on date')
+parser.add_argument('-c', '--cleanup', action='store_true', help='Remove input log file after processing')
+args = parser.parse_args()
+
+
+if os.path.exists(args.input_file):
+    logfile_name = args.input_file
+else:
+    print("Log file does not exist:", args.input_file)
     sys.exit(0)
 
-logfile_name = sys.argv[1]
+log_lines = []
 
 p = re.compile(r'^\[(.*)\].*RDCPCSV: (.*)')
 
+# Read log file and process lines
 with open(logfile_name, 'r') as logfile:
-    print("Date,Time,Timestamp,SinceLast,TSduration,CFEstRel,Length,Airtime,RSSI,SNR,Timeslot,Counter,FutTS,Origin,Sender,Relay1,Relay2,Relay3,Type,RefNr,Destination,SeqNr,Frequency,Device")
     for line in logfile:
         l = line.strip()
         m = p.match(l)
         if m != None:
-            print_line(m.group(1), m.group(2))
+            log_lines.append(format_log_line(m.group(1), m.group(2)))
+
+header = "Date,Time,Timestamp,SinceLast,TSduration,CFEstRel,Length,Airtime,RSSI,SNR,Timeslot,Counter,FutTS,Origin,Sender,Relay1,Relay2,Relay3,Type,RefNr,Destination,SeqNr,Frequency,Device"
+
+if args.store:
+
+    if not os.path.isdir(args.store):
+        print("Output directory does not exist:", args.store)
+        sys.exit(0)
+    else:
+        date_dict = {}
+
+        if args.daily:
+            for log_line in log_lines:
+                date = log_line.split(",")[0]
+                if date not in date_dict:
+                    date_dict[date] = []
+                date_dict[date].append(log_line)
+        else:
+            date_dict["all"] = log_lines
+
+        for date, lines in date_dict.items():
+            output_file = f"{args.store}/rdcp-log-{date}.csv"
+
+            if args.append and os.path.exists(output_file):
+                with open(output_file, 'a') as f:
+                    f.writelines(log_lines)
+            else:
+                with open(output_file, 'w') as f:
+                    f.write(header + "\n")
+                    f.writelines(log_lines)
+
+else:
+    print(header)
+    for log_line in log_lines:
+        print(log_line, end='')
+
+if args.cleanup and os.path.exists(logfile_name):
+    os.remove(logfile_name)
 
 sys.exit(0)
 
