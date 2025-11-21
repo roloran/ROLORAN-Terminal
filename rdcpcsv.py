@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
-import datetime
 import os
-import rdcpcodec
 import sys
 import re
 
@@ -201,7 +199,7 @@ def format_log_line(m1, m2):
         device
     ]
 
-    return ",".join(content) + "\n"
+    return ",".join(list(map(str, content))) + "\n"
 
 def print_line(m1, m2):
     print(format_log_line(m1,m2))
