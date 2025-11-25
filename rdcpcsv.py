@@ -5,6 +5,23 @@ import sys
 import re
 
 import argparse
+from typing import Union
+
+# Date regex format
+REGEX_DATE = r'\d{4}-\d{2}-\d{2}'
+REGEX_TIME = r'\d{2}:\d{2}:\d{2}'
+
+# Regex to find any log line
+REGEX_LOG_LINE_TIMESTAMP = rf'^\[({REGEX_DATE}) ({REGEX_TIME})\]'
+
+# Regex to find any log line
+REGEX_LOG_LINE = rf'{REGEX_LOG_LINE_TIMESTAMP} (.*)'
+
+# Regex to find relevant log lines
+REGEX_CSV_LINE = rf'{REGEX_LOG_LINE_TIMESTAMP}.*RDCPCSV: (.*)'
+
+# Base file name for output files
+BASE_FILE_NAME = "rdcp-log"
 
 def getname(rdcpa):
     result = "0x" + rdcpa
@@ -50,7 +67,6 @@ def getname(rdcpa):
         result = "Broadcast"
     return result
 
-
 def getmt(mt):
     result = "0x" + mt
     if mt == "10":
@@ -91,7 +107,6 @@ def getmt(mt):
         result = "RECEIPT"
     return result
 
-
 def getrelaybyid(id):
     result = "unknown " + id
     if id == "0":
@@ -129,7 +144,6 @@ def getrelaybyid(id):
 
     return result
 
-
 def getrelay(sender, r1, r2, r3):
     res1 = "unknown " + r1
     res2 = "unknown " + r2
@@ -148,14 +162,20 @@ def getrelay(sender, r1, r2, r3):
 
     return (res1, res2, res3)
 
+def format_log_line_to_csv_line(line: str) -> Union[str,None]:
 
-def format_log_line(m1, m2):
-    d, t = m1.split(" ")
-
-    try:
-        device,sincelast,now,cfest,cfestrel,length,refnr,futts,sender,origin,seqnr,destination,mt,counter,r1,r2,r3,crc,airtime,frequency,rssi,snr = m2.split(",")
-    except ValueError:
-        return f"{d}, {t}, Broken line\n"
+    valid_line = re.match(REGEX_CSV_LINE, line)
+    # Filter non-csv lines
+    if valid_line is None:
+        return None
+    else:
+        date, timestamp, message = valid_line.groups()
+        try:
+            # Unpack CSV message
+            device,sincelast,now,cfest,cfestrel,length,refnr,futts,sender,origin,seqnr,destination,mt,counter,r1,r2,r3,crc,airtime,frequency,rssi,snr = message.split(",")
+        except ValueError:
+            # Highlight malformed lines
+            return f"{date}, {timestamp}\n"
 
     timeslot = 8 - int(futts)
     osender = sender
@@ -173,8 +193,8 @@ def format_log_line(m1, m2):
         timeslot = "single"
 
     content = [
-        d,
-        t,
+        date,
+        timestamp,
         now,
         sincelast + " ms",
         str(at+1000) + " ms",
@@ -201,77 +221,136 @@ def format_log_line(m1, m2):
 
     return ",".join(list(map(str, content))) + "\n"
 
-def print_line(m1, m2):
-    print(format_log_line(m1,m2))
+def format_log_line(line: str) -> str:
 
+    valid_line = re.match(REGEX_LOG_LINE, line)
+    if valid_line is None:
+        return ""
+    else:
+        return line + "\n"
 
-# Main program
+if __name__ == "__main__":
 
-parser = argparse.ArgumentParser(description='Process RDCP log file and output CSV.')
-parser.add_argument('-i', '--input-file', type=str, help='Path to RDCP log file to process', required=True, action='store')
-parser.add_argument('-s', '--store', action='store', help="Path to output folder for CSV file(s)")
-parser.add_argument('-a', '--append', action='store_true', help='Append data to output file instead of overwriting')
-parser.add_argument('-d', '--daily', action='store_true', help='Splits output into multiple files based on date')
-parser.add_argument('-c', '--cleanup', action='store_true', help='Remove input log file after processing')
-args = parser.parse_args()
+    parser = argparse.ArgumentParser(description='Process RDCP log file and output CSV.')
 
+    # Options for input files
+    parser.add_argument('-i', '--input-file', type=str, help='Path to RDCP log file to process', required=True, action='store')
+    parser.add_argument('-c', '--cleanup', action='store_true', help='Remove input log file after processing')
 
-if os.path.exists(args.input_file):
-    logfile_name = args.input_file
-else:
-    print("Log file does not exist:", args.input_file)
+    # Options for output storage
+    parser.add_argument('-s', '--store', action='store', help="Path to output folder for CSV file(s)")
+    parser.add_argument('-k', '--keep', action='store', help='Path to output folder for processed log file')
+
+    # Options for advanced output storage
+    parser.add_argument('-n', '--name', action='store', help='Name for output files (date prefix is added automatically)')
+    parser.add_argument('-d', '--daily', action='store_true', help='Splits output into multiple files based on date')
+    parser.add_argument('-a', '--append', action='store_true', help='Append data to output files instead of overwriting (both for CSV and kept log file)')
+
+    args = parser.parse_args()
+
+    # Check if input file exists
+    if os.path.exists(args.input_file):
+        logfile_name = args.input_file
+    else:
+        print("Log file does not exist:", args.input_file)
+        sys.exit(0)
+
+    # Extract relevant lines from log file
+    csv_lines = []
+
+    with open(logfile_name, 'r') as logfile:
+        for line in logfile:
+            csv_line = format_log_line_to_csv_line(line)
+            if csv_line is not None:
+                csv_lines.append(csv_line)
+
+    # Create CSV header
+    header = "Date,Time,Timestamp,SinceLast,TSduration,CFEstRel,Length,Airtime,RSSI,SNR,Timeslot,Counter,FutTS,Origin,Sender,Relay1,Relay2,Relay3,Type,RefNr,Destination,SeqNr,Frequency,Device"
+
+    name = args.name if args.name else BASE_FILE_NAME
+
+    # Check if output should be stored in files
+    if args.store:
+
+        # Check if output directory exists
+        if not os.path.isdir(args.store):
+            print("Output directory does not exist:", args.store)
+            sys.exit(0)
+        else:
+            date_dict = {}
+
+            # Check if output should be seprated by date
+            if args.daily:
+                for line in csv_lines:
+                    date = line.split(",")[0]
+                    if date not in date_dict:
+                        date_dict[date] = []
+                    date_dict[date].append(line)
+            else:
+                date_dict["all"] = csv_lines
+
+            # Create output files
+            for date, lines in date_dict.items():
+                output_file = os.path.join(args.store, f"{date}-{name}.csv")
+
+                # Check if output should be appended or overwritten
+                if args.append and os.path.exists(output_file):
+                    with open(output_file, 'a') as f:
+                        f.writelines(csv_lines)
+                else:
+                    with open(output_file, 'w') as f:
+                        f.write(header + "\n")
+                        f.writelines(csv_lines)
+
+    else:
+        # Print to standard output
+        print(header)
+        for line in csv_lines:
+            print(line, end='')
+
+    # Check if log file should be saved
+    if args.keep:
+        
+        # Check if directory exists
+        if not os.path.isdir(args.keep):
+            print("Keep directory does not exist:", args.keep)
+            sys.exit(0)
+        else:
+            date_dict = {}
+
+            # Read original log file
+            with open(logfile_name, 'r') as logfile:
+                log_lines = logfile.readlines()
+
+                # Check if output should be seprated by date
+                if args.daily:
+                    for line in log_lines:
+                        valid_line = re.match(REGEX_LOG_LINE, line)
+                        if valid_line is not None:
+                            if args.daily:
+                                date = valid_line.group(1)
+                                if date not in date_dict:
+                                    date_dict[date] = []
+                                date_dict[date].append(line)
+                else:
+                    date_dict["all"] = log_lines
+                    
+            # Create output files
+            for date, lines in date_dict.items():
+                output_file = os.path.join(args.keep, f"{date}-{name}.log")
+                
+                # Check if output should be appended or overwritten
+                if args.append and os.path.exists(output_file):
+                    with open(output_file, 'a') as f:
+                        f.writelines(lines)
+                else:
+                    with open(output_file, 'w') as f:
+                        f.writelines(lines)
+
+    # Check if log file should be removed
+    if args.cleanup and os.path.exists(logfile_name):
+        os.remove(logfile_name)
+
     sys.exit(0)
 
-log_lines = []
-
-p = re.compile(r'^\[(.*)\].*RDCPCSV: (.*)')
-
-# Read log file and process lines
-with open(logfile_name, 'r') as logfile:
-    for line in logfile:
-        l = line.strip()
-        m = p.match(l)
-        if m != None:
-            log_lines.append(format_log_line(m.group(1), m.group(2)))
-
-header = "Date,Time,Timestamp,SinceLast,TSduration,CFEstRel,Length,Airtime,RSSI,SNR,Timeslot,Counter,FutTS,Origin,Sender,Relay1,Relay2,Relay3,Type,RefNr,Destination,SeqNr,Frequency,Device"
-
-if args.store:
-
-    if not os.path.isdir(args.store):
-        print("Output directory does not exist:", args.store)
-        sys.exit(0)
-    else:
-        date_dict = {}
-
-        if args.daily:
-            for log_line in log_lines:
-                date = log_line.split(",")[0]
-                if date not in date_dict:
-                    date_dict[date] = []
-                date_dict[date].append(log_line)
-        else:
-            date_dict["all"] = log_lines
-
-        for date, lines in date_dict.items():
-            output_file = f"{args.store}/rdcp-log-{date}.csv"
-
-            if args.append and os.path.exists(output_file):
-                with open(output_file, 'a') as f:
-                    f.writelines(log_lines)
-            else:
-                with open(output_file, 'w') as f:
-                    f.write(header + "\n")
-                    f.writelines(log_lines)
-
-else:
-    print(header)
-    for log_line in log_lines:
-        print(log_line, end='')
-
-if args.cleanup and os.path.exists(logfile_name):
-    os.remove(logfile_name)
-
-sys.exit(0)
-
-# EOF
+    # EOF
