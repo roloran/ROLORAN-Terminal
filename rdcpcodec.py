@@ -942,6 +942,8 @@ def rx_verbose(rxstring):
             return
         if "HELP" in rxstring:
             return
+        if "cb_RX" in rxstring:
+            return
         print(color["red"] + "Not a valid RX line" + color["normal"])
         return
     base64msg = ""
