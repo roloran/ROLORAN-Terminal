@@ -20,16 +20,16 @@ to create new RDCP packets. The commands 'interactive' and 'craft' can be
 used to switch between those two modes.
 """
 
+import glob
+import os
+import platform
+import re
 import threading
 from time import sleep
-import os
-import re
-import glob
-
-import platform
 
 if platform.system() == "Windows":
     import pyreadline3
+
     readline = pyreadline3.Readline()
 else:
     try:
@@ -37,14 +37,23 @@ else:
     except ImportError:
         import readline
 
-import sys
-import serial
 import datetime
+import sys
+
+import serial
+
 import rdcpcodec
 
 try:
-    from bleuart import ble_set_devicename, ble_rx_get, ble_tx, ble_rx_available, ble_start
     import asyncio
+
+    from bleuart import (
+        ble_rx_available,
+        ble_rx_get,
+        ble_set_devicename,
+        ble_start,
+        ble_tx,
+    )
 except:
     pass
 
@@ -79,6 +88,7 @@ color = {
 MODE_INTERACTIVE = 0x01
 MODE_CRAFT = 0x02
 current_mode = MODE_INTERACTIVE
+
 
 def rterm_setup(filename):
     """Prepare filenames to use (device, history, logfile)"""
@@ -122,7 +132,11 @@ def rterm_setup(filename):
     print(color["normal"] + "Device name:", device, "for serial input/output.")
 
     if device.startswith("BLE:"):
-        print(color["red"] + "Switching to BLE mode, please wait for successful or failed BLE connection!" + color["normal"])
+        print(
+            color["red"]
+            + "Switching to BLE mode, please wait for successful or failed BLE connection!"
+            + color["normal"]
+        )
         use_ble = True
 
     suffix = device.replace("/", "_")
@@ -336,9 +350,7 @@ def modem_thread():
                 logfile_line = "[" + ct + "] " + l
                 write_logfile(logfile_line)
                 l = color["normal"] + logfile_line
-                regex = (
-                    r"^([a-zA-Z0-9-{} !?:]+: )(ECHO: |INFO: |WARNING: |ERROR: |RXMETA |RX |TXMETA |TX ).*$"
-                )
+                regex = r"^([a-zA-Z0-9-{} !?:]+: )(ECHO: |INFO: |WARNING: |ERROR: |RXMETA |RX |TXMETA |TX ).*$"
                 if re.search(regex, original_line):
                     l = l.replace("INFO:", color["yellow"] + "INFO:" + color["normal"])
                     l = l.replace("ECHO:", color["magenta"] + "ECHO:" + color["normal"])
@@ -351,6 +363,10 @@ def modem_thread():
                     )
                     l = l.replace(
                         ": RX ", ": " + color["green"] + "RX " + color["normal"]
+                    )
+                    l = l.replace(
+                        ": RDCPCSV ",
+                        ": " + color["green"] + "RDCPCSV " + color["normal"],
                     )
                     l = l.replace(
                         "TXMETA ", color["cyan"] + "TXMETA " + color["normal"]

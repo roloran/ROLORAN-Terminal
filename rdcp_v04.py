@@ -10,13 +10,15 @@ Could be extended into a more generic RDCP module for Python3 scripts.
 # We need Base64 encoding for Serial communication with a LoRa modem
 # and unishox2 for compressing natural language text strings.
 import base64
+import hashlib
+
 import unishox2
 
 # Modules for symmetric encryption, hashing, and Schnorr signatures
 from cryptography.exceptions import InvalidKey, InvalidSignature
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
 import schnorr
-import hashlib
 
 # We store some information in global variables but make them adjustable via provided functions.
 rdcp_my_address = (
@@ -56,6 +58,7 @@ RDCP_MSGTYPE_SCHEDULE_RCPT = 0x2B
 RDCP_MSGTYPE_SIGNATURE = 0x30
 RDCP_MSGTYPE_HEARTBEAT = 0x31
 RDCP_MSGTYPE_RTC = 0x32
+RDCP_MSGTYPE_TUNNEL = 0x40
 
 RDCP_MSGTYPE_OA_SUBTYPE_RESERVED = 0x00
 RDCP_MSGTYPE_OA_SUBTYPE_NONCRISIS = 0x10
@@ -116,35 +119,262 @@ def rdcp_get_oa_reference_number():
 def crc16(data):
     """calculate CRC-16 (CCITT) checksum"""
     lookup = [
-        0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50A5, 0x60C6, 0x70E7, 0x8108,
-        0x9129, 0xA14A, 0xB16B, 0xC18C, 0xD1AD, 0xE1CE, 0xF1EF, 0x1231, 0x0210,
-        0x3273, 0x2252, 0x52B5, 0x4294, 0x72F7, 0x62D6, 0x9339, 0x8318, 0xB37B,
-        0xA35A, 0xD3BD, 0xC39C, 0xF3FF, 0xE3DE, 0x2462, 0x3443, 0x0420, 0x1401,
-        0x64E6, 0x74C7, 0x44A4, 0x5485, 0xA56A, 0xB54B, 0x8528, 0x9509, 0xE5EE,
-        0xF5CF, 0xC5AC, 0xD58D, 0x3653, 0x2672, 0x1611, 0x0630, 0x76D7, 0x66F6,
-        0x5695, 0x46B4, 0xB75B, 0xA77A, 0x9719, 0x8738, 0xF7DF, 0xE7FE, 0xD79D,
-        0xC7BC, 0x48C4, 0x58E5, 0x6886, 0x78A7, 0x0840, 0x1861, 0x2802, 0x3823,
-        0xC9CC, 0xD9ED, 0xE98E, 0xF9AF, 0x8948, 0x9969, 0xA90A, 0xB92B, 0x5AF5,
-        0x4AD4, 0x7AB7, 0x6A96, 0x1A71, 0x0A50, 0x3A33, 0x2A12, 0xDBFD, 0xCBDC,
-        0xFBBF, 0xEB9E, 0x9B79, 0x8B58, 0xBB3B, 0xAB1A, 0x6CA6, 0x7C87, 0x4CE4,
-        0x5CC5, 0x2C22, 0x3C03, 0x0C60, 0x1C41, 0xEDAE, 0xFD8F, 0xCDEC, 0xDDCD,
-        0xAD2A, 0xBD0B, 0x8D68, 0x9D49, 0x7E97, 0x6EB6, 0x5ED5, 0x4EF4, 0x3E13,
-        0x2E32, 0x1E51, 0x0E70, 0xFF9F, 0xEFBE, 0xDFDD, 0xCFFC, 0xBF1B, 0xAF3A,
-        0x9F59, 0x8F78, 0x9188, 0x81A9, 0xB1CA, 0xA1EB, 0xD10C, 0xC12D, 0xF14E,
-        0xE16F, 0x1080, 0x00A1, 0x30C2, 0x20E3, 0x5004, 0x4025, 0x7046, 0x6067,
-        0x83B9, 0x9398, 0xA3FB, 0xB3DA, 0xC33D, 0xD31C, 0xE37F, 0xF35E, 0x02B1,
-        0x1290, 0x22F3, 0x32D2, 0x4235, 0x5214, 0x6277, 0x7256, 0xB5EA, 0xA5CB,
-        0x95A8, 0x8589, 0xF56E, 0xE54F, 0xD52C, 0xC50D, 0x34E2, 0x24C3, 0x14A0,
-        0x0481, 0x7466, 0x6447, 0x5424, 0x4405, 0xA7DB, 0xB7FA, 0x8799, 0x97B8,
-        0xE75F, 0xF77E, 0xC71D, 0xD73C, 0x26D3, 0x36F2, 0x0691, 0x16B0, 0x6657,
-        0x7676, 0x4615, 0x5634, 0xD94C, 0xC96D, 0xF90E, 0xE92F, 0x99C8, 0x89E9,
-        0xB98A, 0xA9AB, 0x5844, 0x4865, 0x7806, 0x6827, 0x18C0, 0x08E1, 0x3882,
-        0x28A3, 0xCB7D, 0xDB5C, 0xEB3F, 0xFB1E, 0x8BF9, 0x9BD8, 0xABBB, 0xBB9A,
-        0x4A75, 0x5A54, 0x6A37, 0x7A16, 0x0AF1, 0x1AD0, 0x2AB3, 0x3A92, 0xFD2E,
-        0xED0F, 0xDD6C, 0xCD4D, 0xBDAA, 0xAD8B, 0x9DE8, 0x8DC9, 0x7C26, 0x6C07,
-        0x5C64, 0x4C45, 0x3CA2, 0x2C83, 0x1CE0, 0x0CC1, 0xEF1F, 0xFF3E, 0xCF5D,
-        0xDF7C, 0xAF9B, 0xBFBA, 0x8FD9, 0x9FF8, 0x6E17, 0x7E36, 0x4E55, 0x5E74,
-        0x2E93, 0x3EB2, 0x0ED1, 0x1EF0,
+        0x0000,
+        0x1021,
+        0x2042,
+        0x3063,
+        0x4084,
+        0x50A5,
+        0x60C6,
+        0x70E7,
+        0x8108,
+        0x9129,
+        0xA14A,
+        0xB16B,
+        0xC18C,
+        0xD1AD,
+        0xE1CE,
+        0xF1EF,
+        0x1231,
+        0x0210,
+        0x3273,
+        0x2252,
+        0x52B5,
+        0x4294,
+        0x72F7,
+        0x62D6,
+        0x9339,
+        0x8318,
+        0xB37B,
+        0xA35A,
+        0xD3BD,
+        0xC39C,
+        0xF3FF,
+        0xE3DE,
+        0x2462,
+        0x3443,
+        0x0420,
+        0x1401,
+        0x64E6,
+        0x74C7,
+        0x44A4,
+        0x5485,
+        0xA56A,
+        0xB54B,
+        0x8528,
+        0x9509,
+        0xE5EE,
+        0xF5CF,
+        0xC5AC,
+        0xD58D,
+        0x3653,
+        0x2672,
+        0x1611,
+        0x0630,
+        0x76D7,
+        0x66F6,
+        0x5695,
+        0x46B4,
+        0xB75B,
+        0xA77A,
+        0x9719,
+        0x8738,
+        0xF7DF,
+        0xE7FE,
+        0xD79D,
+        0xC7BC,
+        0x48C4,
+        0x58E5,
+        0x6886,
+        0x78A7,
+        0x0840,
+        0x1861,
+        0x2802,
+        0x3823,
+        0xC9CC,
+        0xD9ED,
+        0xE98E,
+        0xF9AF,
+        0x8948,
+        0x9969,
+        0xA90A,
+        0xB92B,
+        0x5AF5,
+        0x4AD4,
+        0x7AB7,
+        0x6A96,
+        0x1A71,
+        0x0A50,
+        0x3A33,
+        0x2A12,
+        0xDBFD,
+        0xCBDC,
+        0xFBBF,
+        0xEB9E,
+        0x9B79,
+        0x8B58,
+        0xBB3B,
+        0xAB1A,
+        0x6CA6,
+        0x7C87,
+        0x4CE4,
+        0x5CC5,
+        0x2C22,
+        0x3C03,
+        0x0C60,
+        0x1C41,
+        0xEDAE,
+        0xFD8F,
+        0xCDEC,
+        0xDDCD,
+        0xAD2A,
+        0xBD0B,
+        0x8D68,
+        0x9D49,
+        0x7E97,
+        0x6EB6,
+        0x5ED5,
+        0x4EF4,
+        0x3E13,
+        0x2E32,
+        0x1E51,
+        0x0E70,
+        0xFF9F,
+        0xEFBE,
+        0xDFDD,
+        0xCFFC,
+        0xBF1B,
+        0xAF3A,
+        0x9F59,
+        0x8F78,
+        0x9188,
+        0x81A9,
+        0xB1CA,
+        0xA1EB,
+        0xD10C,
+        0xC12D,
+        0xF14E,
+        0xE16F,
+        0x1080,
+        0x00A1,
+        0x30C2,
+        0x20E3,
+        0x5004,
+        0x4025,
+        0x7046,
+        0x6067,
+        0x83B9,
+        0x9398,
+        0xA3FB,
+        0xB3DA,
+        0xC33D,
+        0xD31C,
+        0xE37F,
+        0xF35E,
+        0x02B1,
+        0x1290,
+        0x22F3,
+        0x32D2,
+        0x4235,
+        0x5214,
+        0x6277,
+        0x7256,
+        0xB5EA,
+        0xA5CB,
+        0x95A8,
+        0x8589,
+        0xF56E,
+        0xE54F,
+        0xD52C,
+        0xC50D,
+        0x34E2,
+        0x24C3,
+        0x14A0,
+        0x0481,
+        0x7466,
+        0x6447,
+        0x5424,
+        0x4405,
+        0xA7DB,
+        0xB7FA,
+        0x8799,
+        0x97B8,
+        0xE75F,
+        0xF77E,
+        0xC71D,
+        0xD73C,
+        0x26D3,
+        0x36F2,
+        0x0691,
+        0x16B0,
+        0x6657,
+        0x7676,
+        0x4615,
+        0x5634,
+        0xD94C,
+        0xC96D,
+        0xF90E,
+        0xE92F,
+        0x99C8,
+        0x89E9,
+        0xB98A,
+        0xA9AB,
+        0x5844,
+        0x4865,
+        0x7806,
+        0x6827,
+        0x18C0,
+        0x08E1,
+        0x3882,
+        0x28A3,
+        0xCB7D,
+        0xDB5C,
+        0xEB3F,
+        0xFB1E,
+        0x8BF9,
+        0x9BD8,
+        0xABBB,
+        0xBB9A,
+        0x4A75,
+        0x5A54,
+        0x6A37,
+        0x7A16,
+        0x0AF1,
+        0x1AD0,
+        0x2AB3,
+        0x3A92,
+        0xFD2E,
+        0xED0F,
+        0xDD6C,
+        0xCD4D,
+        0xBDAA,
+        0xAD8B,
+        0x9DE8,
+        0x8DC9,
+        0x7C26,
+        0x6C07,
+        0x5C64,
+        0x4C45,
+        0x3CA2,
+        0x2C83,
+        0x1CE0,
+        0x0CC1,
+        0xEF1F,
+        0xFF3E,
+        0xCF5D,
+        0xDF7C,
+        0xAF9B,
+        0xBFBA,
+        0x8FD9,
+        0x9FF8,
+        0x6E17,
+        0x7E36,
+        0x4E55,
+        0x5E74,
+        0x2E93,
+        0x3EB2,
+        0x0ED1,
+        0x1EF0,
     ]
     crc = 0xFFFF
     for i in range(0, len(data)):
@@ -166,7 +396,7 @@ def rdcp_create_message(
     relay3=0xE0,  # relay/delay 3
     crc=0x0000,  # CRC-16
     payload=b"",
-    add_tag_length = 0 # add this value to payload length in case we got an AES-GCM tag
+    add_tag_length=0,  # add this value to payload length in case we got an AES-GCM tag
 ):
     """craft an RDCP message with header and given payload"""
     # the payload as bytearray
@@ -324,17 +554,17 @@ def hash_and_schnorr(data):
     m = hashlib.sha256()
     m.update(data)
     hashdigest = m.digest()
-    hexhash = ''.join('{:02X}'.format(x) for x in hashdigest)
+    hexhash = "".join("{:02X}".format(x) for x in hashdigest)
     print("Hash for Schnorr signature:", hexhash)
 
     signature = sch.sign(private_key, hashdigest)
 
     R, s = signature
-    R_bytes = R.to_bytes(encoding='compressed')
-    s_bytes = s.to_bytes(32, 'big')
+    R_bytes = R.to_bytes(encoding="compressed")
+    s_bytes = s.to_bytes(32, "big")
 
-    hexstring1 = ''.join('{:02X}'.format(x) for x in R_bytes)
-    hexstring2 = ''.join('{:02X}'.format(x) for x in s_bytes)
+    hexstring1 = "".join("{:02X}".format(x) for x in R_bytes)
+    hexstring2 = "".join("{:02X}".format(x) for x in s_bytes)
     hexstring_of_signature = hexstring1 + ":" + hexstring2
     print("Schnorr signature in hex:", hexstring_of_signature)
 
@@ -344,83 +574,107 @@ def hash_and_schnorr(data):
 
     return result
 
+
 def bytearray_to_string(b, sep=" "):
-    hexdata = sep.join('{:02X}'.format(x) for x in b)
+    hexdata = sep.join("{:02X}".format(x) for x in b)
     return hexdata
+
 
 def craft_oa_pub(oatext, subtype, fragment_size=162, lifetime=10):
     """Craft one or more public/broadcast OA fragments and the signature message"""
     compressed_text, original_size = unishox2.compress(oatext)
     l = len(compressed_text)
 
-    reference_number = rdcp_next_oa_reference_number() # single RefNr for all fragments
+    reference_number = rdcp_next_oa_reference_number()  # single RefNr for all fragments
     schnorrdata = bytearray()
 
-    if l > fragment_size: # oatext must be split into multiple fragments
-      num_oas = 1 + (len(oatext) // fragment_size) # split the content, not its Unishox2 representation to enable decoding of fragments
-      for oa_num in range(0, num_oas):
-          payload = bytearray()
-          payload.append(subtype)
-          payload.append(reference_number % 256)
-          payload.append(reference_number // 256)
-          payload.append(lifetime % 256)
-          payload.append(lifetime // 256)
-          morefrags = num_oas - oa_num - 1
-          payload.append(morefrags % 256)
+    if l > fragment_size:  # oatext must be split into multiple fragments
+        num_oas = (
+            1 + (len(oatext) // fragment_size)
+        )  # split the content, not its Unishox2 representation to enable decoding of fragments
+        for oa_num in range(0, num_oas):
+            payload = bytearray()
+            payload.append(subtype)
+            payload.append(reference_number % 256)
+            payload.append(reference_number // 256)
+            payload.append(lifetime % 256)
+            payload.append(lifetime // 256)
+            morefrags = num_oas - oa_num - 1
+            payload.append(morefrags % 256)
 
-          payload_slice_to_end = oatext[oa_num * fragment_size :]
-          if morefrags > 0:
-              compressed_text, original_size = unishox2.compress(payload_slice_to_end[0 : fragment_size+1])
-          else:
-              compressed_text, original_size = unishox2.compress(payload_slice_to_end)
-          payload.extend(compressed_text)
+            payload_slice_to_end = oatext[oa_num * fragment_size :]
+            if morefrags > 0:
+                compressed_text, original_size = unishox2.compress(
+                    payload_slice_to_end[0 : fragment_size + 1]
+                )
+            else:
+                compressed_text, original_size = unishox2.compress(payload_slice_to_end)
+            payload.extend(compressed_text)
 
-          rm = rdcp_create_message(sender=0x0010, origin=0x0010, payload=payload, counter=4, message_type=RDCP_MSGTYPE_OFFICIAL_ANNOUNCEMENT)
-          print("More fragments:", morefrags, str(rdcp_message_as_base64(rm))[2:-1])
+            rm = rdcp_create_message(
+                sender=0x0010,
+                origin=0x0010,
+                payload=payload,
+                counter=4,
+                message_type=RDCP_MSGTYPE_OFFICIAL_ANNOUNCEMENT,
+            )
+            print("More fragments:", morefrags, str(rdcp_message_as_base64(rm))[2:-1])
 
-          if oa_num == 0: # Header fields of the first fragment to be included in the Schnorr signature
-              schnorrdata.append(0x0010 % 256) # origin
-              schnorrdata.append(0x0010 // 256)
-              schnorrdata.append(0xFFFF % 256) # destination
-              schnorrdata.append(0xFFFF // 256)
-              schnorrdata.append(RDCP_MSGTYPE_OFFICIAL_ANNOUNCEMENT % 256)
-              schnorrdata.append(subtype % 256)
-              schnorrdata.append(reference_number % 256)
-              schnorrdata.append(reference_number // 256)
-              schnorrdata.append(lifetime % 256)
-              schnorrdata.append(lifetime // 256)
-              schnorrdata.append(morefrags % 256)
-          schnorrdata.extend(compressed_text) # append each fragment's Unishox2-compressed Content
+            if (
+                oa_num == 0
+            ):  # Header fields of the first fragment to be included in the Schnorr signature
+                schnorrdata.append(0x0010 % 256)  # origin
+                schnorrdata.append(0x0010 // 256)
+                schnorrdata.append(0xFFFF % 256)  # destination
+                schnorrdata.append(0xFFFF // 256)
+                schnorrdata.append(RDCP_MSGTYPE_OFFICIAL_ANNOUNCEMENT % 256)
+                schnorrdata.append(subtype % 256)
+                schnorrdata.append(reference_number % 256)
+                schnorrdata.append(reference_number // 256)
+                schnorrdata.append(lifetime % 256)
+                schnorrdata.append(lifetime // 256)
+                schnorrdata.append(morefrags % 256)
+            schnorrdata.extend(
+                compressed_text
+            )  # append each fragment's Unishox2-compressed Content
 
-    else: # compressed text fits into a single fragment
-      payload = bytearray()
-      payload.append(subtype)
-      payload.append(reference_number % 256)
-      payload.append(reference_number // 256)
-      payload.append(lifetime % 256)
-      payload.append(lifetime // 256)
-      morefrags = 0
-      payload.append(morefrags % 256)
+    else:  # compressed text fits into a single fragment
+        payload = bytearray()
+        payload.append(subtype)
+        payload.append(reference_number % 256)
+        payload.append(reference_number // 256)
+        payload.append(lifetime % 256)
+        payload.append(lifetime // 256)
+        morefrags = 0
+        payload.append(morefrags % 256)
 
-      payload_slice_to_end = oatext[:]
-      compressed_text, original_size = unishox2.compress(payload_slice_to_end)
-      payload.extend(compressed_text)
+        payload_slice_to_end = oatext[:]
+        compressed_text, original_size = unishox2.compress(payload_slice_to_end)
+        payload.extend(compressed_text)
 
-      rm = rdcp_create_message(sender=0x0010, origin=0x0010, payload=payload, counter=4, message_type=RDCP_MSGTYPE_OFFICIAL_ANNOUNCEMENT)
-      print("Single fragment:", str(rdcp_message_as_base64(rm))[2:-1])
+        rm = rdcp_create_message(
+            sender=0x0010,
+            origin=0x0010,
+            payload=payload,
+            counter=4,
+            message_type=RDCP_MSGTYPE_OFFICIAL_ANNOUNCEMENT,
+        )
+        print("Single fragment:", str(rdcp_message_as_base64(rm))[2:-1])
 
-      schnorrdata.append(0x0010 % 256) # origin
-      schnorrdata.append(0x0010 // 256)
-      schnorrdata.append(0xFFFF % 256) # destination
-      schnorrdata.append(0xFFFF // 256)
-      schnorrdata.append(RDCP_MSGTYPE_OFFICIAL_ANNOUNCEMENT % 256)
-      schnorrdata.append(subtype % 256)
-      schnorrdata.append(reference_number % 256)
-      schnorrdata.append(reference_number // 256)
-      schnorrdata.append(lifetime % 256)
-      schnorrdata.append(lifetime // 256)
-      schnorrdata.append(morefrags % 256)
-      schnorrdata.extend(compressed_text) # append each fragment's Unishox2-compressed Content
+        schnorrdata.append(0x0010 % 256)  # origin
+        schnorrdata.append(0x0010 // 256)
+        schnorrdata.append(0xFFFF % 256)  # destination
+        schnorrdata.append(0xFFFF // 256)
+        schnorrdata.append(RDCP_MSGTYPE_OFFICIAL_ANNOUNCEMENT % 256)
+        schnorrdata.append(subtype % 256)
+        schnorrdata.append(reference_number % 256)
+        schnorrdata.append(reference_number // 256)
+        schnorrdata.append(lifetime % 256)
+        schnorrdata.append(lifetime // 256)
+        schnorrdata.append(morefrags % 256)
+        schnorrdata.extend(
+            compressed_text
+        )  # append each fragment's Unishox2-compressed Content
 
     # calculate SHA-256 hash and Schnorr Signature, create Signature message
     sig = hash_and_schnorr(schnorrdata)
@@ -428,7 +682,13 @@ def craft_oa_pub(oatext, subtype, fragment_size=162, lifetime=10):
     payload.append(reference_number % 256)
     payload.append(reference_number // 256)
     payload.extend(sig)
-    rm = rdcp_create_message(sender=0x0010, origin=0x0010, payload=payload, counter=4, message_type=RDCP_MSGTYPE_SIGNATURE)
+    rm = rdcp_create_message(
+        sender=0x0010,
+        origin=0x0010,
+        payload=payload,
+        counter=4,
+        message_type=RDCP_MSGTYPE_SIGNATURE,
+    )
     print("RDCP Signature message:", str(rdcp_message_as_base64(rm))[2:-1], end="\n\n")
     return
 
@@ -443,7 +703,7 @@ def craft_oa_priv(oatext, subtype, dest=0xAEFF, refnr=-1, lifetime=10):
     else:
         print("Private OA Content length:", len(oatext), "plain,", l, "compressed")
 
-    if (refnr == -1):
+    if refnr == -1:
         refnr = rdcp_next_oa_reference_number()
 
     schnorrdata = bytearray()
@@ -458,7 +718,15 @@ def craft_oa_priv(oatext, subtype, dest=0xAEFF, refnr=-1, lifetime=10):
     payload.append(morefrags % 256)
     payload.extend(compressed_text)
 
-    plain_rm = rdcp_create_message(sender=0x0010, origin=0x0010, destination=dest, payload=payload, counter=4, message_type=RDCP_MSGTYPE_OFFICIAL_ANNOUNCEMENT, add_tag_length=16)
+    plain_rm = rdcp_create_message(
+        sender=0x0010,
+        origin=0x0010,
+        destination=dest,
+        payload=payload,
+        counter=4,
+        message_type=RDCP_MSGTYPE_OFFICIAL_ANNOUNCEMENT,
+        add_tag_length=16,
+    )
 
     from rdcpcodec import getSharedSecret, hex_quad
 
@@ -481,11 +749,10 @@ def craft_oa_priv(oatext, subtype, dest=0xAEFF, refnr=-1, lifetime=10):
     iv.append(0)
     iv.append(0)
 
-    ad = iv[0:8] # additional data
+    ad = iv[0:8]  # additional data
     plaintext = plain_rm[16:]
 
-    print("IV:", bytearray_to_string(iv), ", AD:", bytearray_to_string(ad));
-
+    print("IV:", bytearray_to_string(iv), ", AD:", bytearray_to_string(ad))
     encrypted_payload = bytearray()
 
     aesgcm = AESGCM(aeskey)
@@ -495,14 +762,13 @@ def craft_oa_priv(oatext, subtype, dest=0xAEFF, refnr=-1, lifetime=10):
         print("Authenticated encryption failed. Bad message or key material.")
         return
 
-    print("Ciphertext + Tag:", bytearray_to_string(encrypted_payload));
-
+    print("Ciphertext + Tag:", bytearray_to_string(encrypted_payload))
     rm = bytearray()
     rm.extend(plain_rm[0:16])
     rm.extend(encrypted_payload)
 
     pl = len(encrypted_payload)
-    rm[9] = pl % 256; # Update payload length RDCP Header field
+    rm[9] = pl % 256  # Update payload length RDCP Header field
 
     # Update CRC
     data_for_crc = bytearray()
@@ -528,7 +794,7 @@ def rdcp_create_message_inlinesig(
     relay3=0xEE,  # relay/delay 3
     crc=0x0000,  # CRC-16
     payload=b"",
-    add_tag_length = 0 # add this value to payload length in case we got an AES-GCM tag
+    add_tag_length=0,  # add this value to payload length in case we got an AES-GCM tag
 ):
     """craft an RDCP message with header and given payload as well as inline Schnorr signature"""
     rdcp_msg = bytearray()
@@ -563,10 +829,10 @@ def rdcp_create_message_inlinesig(
     )  # fit into 1 byte if someone created a too large value
 
     schnorrdata = bytearray()
-    schnorrdata.extend(rdcp_msg[2:4]) # origin
-    schnorrdata.extend(rdcp_msg[4:6]) # seqnr
-    schnorrdata.extend(rdcp_msg[6:8]) # dest
-    schnorrdata.extend(rdcp_msg[8:10]) # msgtype, payload length
+    schnorrdata.extend(rdcp_msg[2:4])  # origin
+    schnorrdata.extend(rdcp_msg[4:6])  # seqnr
+    schnorrdata.extend(rdcp_msg[6:8])  # dest
+    schnorrdata.extend(rdcp_msg[8:10])  # msgtype, payload length
     schnorrdata.extend(payload)
     sig = hash_and_schnorr(schnorrdata)
     payload.extend(sig)
@@ -592,7 +858,9 @@ def craft_rtc(rtc="20250421T085527Z", alarm=0, reset=0, persist=0):
     for c in rtc:
         rtc_payload.append(ord(c))
 
-    rm = rdcp_create_message_inlinesig(message_type=RDCP_MSGTYPE_RTC, destination=0x0200, payload=rtc_payload)
+    rm = rdcp_create_message_inlinesig(
+        message_type=RDCP_MSGTYPE_RTC, destination=0x0200, payload=rtc_payload
+    )
     print("RTC:", str(rdcp_message_as_base64(rm))[2:-1], end="\n\n")
     return
 
@@ -629,14 +897,19 @@ if __name__ == "__main__":
     rdcp_message_pretty_print(m)
 
     print("Public official announcement (long)")
-    craft_oa_pub("Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea re",
-        RDCP_MSGTYPE_OA_SUBTYPE_CRISIS_TXT)
+    craft_oa_pub(
+        "Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea re",
+        RDCP_MSGTYPE_OA_SUBTYPE_CRISIS_TXT,
+    )
 
     print("Public official announcement (short)")
     craft_oa_pub("Hello world!", RDCP_MSGTYPE_OA_SUBTYPE_NONCRISIS)
 
     print("Private official announcement")
-    craft_oa_priv("Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam volu", RDCP_MSGTYPE_OA_SUBTYPE_INQUIRY)
+    craft_oa_priv(
+        "Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam volu",
+        RDCP_MSGTYPE_OA_SUBTYPE_INQUIRY,
+    )
 
     print("RTC")
     craft_rtc("20250421T085527Z", 0, 0, 0)

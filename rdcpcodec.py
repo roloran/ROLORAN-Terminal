@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
 import base64
-
 import platform
+
 if platform.system() == "Windows":
     import pyreadline3
+
     readline = pyreadline3.Readline()
 else:
     try:
@@ -12,14 +13,16 @@ else:
     except ImportError:
         import readline
 
-import unishox2
-import re
 import copy
-import rdcp_v04
+import hashlib
+import re
+
+import unishox2
 from cryptography.exceptions import InvalidKey, InvalidSignature
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+import rdcp_v04
 import schnorr
-import hashlib
 
 RDCP_HEADER_SIZE = 16
 
@@ -62,6 +65,7 @@ rdcp_msgtypes = {
     0x30: "RDCP Cryptographic Signature",
     0x31: "RDCP Heartbeat",
     0x32: "RDCP RTC",
+    0x40: "RDCP Tunnel",
 }
 
 
@@ -570,7 +574,7 @@ def verify_crc16(m):
 
 
 def getSharedSecret(origin):
-    """Return the HQ Shared Secret AES-256 key for a CIRE origin if available, otherwise None """
+    """Return the HQ Shared Secret AES-256 key for a CIRE origin if available, otherwise None"""
     try:
         f = open("aeskey-" + origin, "r")
         content = f.readline()
@@ -612,10 +616,12 @@ def getSchnorrVerification(rdcp, num_bytes):
     public_key = sch.import_public_key_hex(pubkey_from_file)
 
     data_to_sign = bytearray()
-    for i in range(2,10):
-        data_to_sign.append(rdcp[i]) # add static RDCP Header fields: Origin, SeqNr, Destination, MsgType, PayloadLength
+    for i in range(2, 10):
+        data_to_sign.append(
+            rdcp[i]
+        )  # add static RDCP Header fields: Origin, SeqNr, Destination, MsgType, PayloadLength
     for i in range(0, num_bytes):
-        data_to_sign.append(rdcp[16+i]) # add the first num_bytes of the RDCP Payload
+        data_to_sign.append(rdcp[16 + i])  # add the first num_bytes of the RDCP Payload
     signature = bytearray()
     for i in range(0, 65):
         signature.append(rdcp[i + 16 + num_bytes])
@@ -624,8 +630,8 @@ def getSchnorrVerification(rdcp, num_bytes):
     m.update(data_to_sign)
     hashdigest = m.digest()
 
-    hexstring1 = ''.join('{:02X}'.format(x) for x in signature[0:33])
-    hexstring2 = ''.join('{:02X}'.format(x) for x in signature[33:])
+    hexstring1 = "".join("{:02X}".format(x) for x in signature[0:33])
+    hexstring2 = "".join("{:02X}".format(x) for x in signature[33:])
     hexstring_of_signature = hexstring1 + ":" + hexstring2
     sig = sch.import_signature_hex(hexstring_of_signature)
 
@@ -718,7 +724,7 @@ def pretty_print_rdcp(m, colorstring="normal"):
         if len(rdcp) > 16:
             if rdcp_messagetype == "0xFF":
                 pass
-            elif rdcp_messagetype == "0x0F": # ACK
+            elif rdcp_messagetype == "0x0F":  # ACK
                 sigstatus = "(unsigned)"
                 if rdcp_payloadlength_decimal > 3:
                     valid = getSchnorrVerification(rdcp, 3)
@@ -728,10 +734,12 @@ def pretty_print_rdcp(m, colorstring="normal"):
                         sigstatus = "(signature BAD)"
                 acktype = rdcp[18]
                 confirmed = rdcp[16] + 256 * rdcp[17]
-                print(color[colorstring] + "RDCP ACK property: " + color["normal"], end ="")
+                print(
+                    color[colorstring] + "RDCP ACK property: " + color["normal"], end=""
+                )
                 print("RefNr", hex_quad(confirmed), "AckType", acktype, sigstatus)
 
-            elif rdcp_messagetype == "0x0A": # TIMESTAMP
+            elif rdcp_messagetype == "0x0A":  # TIMESTAMP
                 sigstatus = "(unsigned)"
                 if rdcp_payloadlength_decimal > 6:
                     valid = getSchnorrVerification(rdcp, 6)
@@ -745,13 +753,33 @@ def pretty_print_rdcp(m, colorstring="normal"):
                 hour = rdcp[19]
                 min = rdcp[20]
                 status = rdcp[21]
-                print(color[colorstring] + "RDCP TIMESTAMP   : " + color["normal"], end ="")
-                print(str(day).zfill(2) + "." + str(month).zfill(2) + "." + str(year+2025) + " " + str(hour).zfill(2) + ":" + str(min).zfill(2) + " [RDCP Infrastructure Mode " + str(status) + "]", sigstatus)
+                print(
+                    color[colorstring] + "RDCP TIMESTAMP   : " + color["normal"], end=""
+                )
+                print(
+                    str(day).zfill(2)
+                    + "."
+                    + str(month).zfill(2)
+                    + "."
+                    + str(year + 2025)
+                    + " "
+                    + str(hour).zfill(2)
+                    + ":"
+                    + str(min).zfill(2)
+                    + " [RDCP Infrastructure Mode "
+                    + str(status)
+                    + "]",
+                    sigstatus,
+                )
 
-            elif rdcp_messagetype == "0x1A": # CITIZEN REPORT
+            elif rdcp_messagetype == "0x1A":  # CITIZEN REPORT
                 aeskey = getSharedSecret(rdcp_origin)
                 if aeskey == None:
-                    print(color["red"] + "No key material available, cannot decrypt" + color["normal"])
+                    print(
+                        color["red"]
+                        + "No key material available, cannot decrypt"
+                        + color["normal"]
+                    )
                     return
 
                 iv = bytearray()
@@ -777,29 +805,46 @@ def pretty_print_rdcp(m, colorstring="normal"):
                 try:
                     payload = aesgcm.decrypt(bytes(iv), bytes(ciphertext), bytes(ad))
                 except:
-                    print(color["red"] + "Authentication / decryption failed. Bad message or key material." + color["normal"])
+                    print(
+                        color["red"]
+                        + "Authentication / decryption failed. Bad message or key material."
+                        + color["normal"]
+                    )
                     return
 
-                print(color[colorstring] + "RDCP CIRE Type   : " + color["normal"], end ="");
-                subtype = payload[16-16]
-                if (subtype == 0):
+                print(
+                    color[colorstring] + "RDCP CIRE Type   : " + color["normal"], end=""
+                )
+                subtype = payload[16 - 16]
+                if subtype == 0:
                     print("EMERGENCY")
-                if (subtype == 1):
+                if subtype == 1:
                     print("CITIZEN REQUEST")
-                if (subtype == 2):
+                if subtype == 2:
                     print("RESPONSE")
-                refnr = 256 * int(payload[18-16]) + int(payload[17-16])
-                print(color[colorstring] + "RDCP CIRE RefNr  : " + color["normal"], end ="");
+                refnr = 256 * int(payload[18 - 16]) + int(payload[17 - 16])
+                print(
+                    color[colorstring] + "RDCP CIRE RefNr  : " + color["normal"], end=""
+                )
                 print(hex_quad(refnr))
-                print(color[colorstring] + "RDCP CIRE Message: " + color["normal"], end ="");
-                message = unishox2.decompress(bytes(payload[19-16:]), 512)
+                print(
+                    color[colorstring] + "RDCP CIRE Message: " + color["normal"], end=""
+                )
+                message = unishox2.decompress(bytes(payload[19 - 16 :]), 512)
                 print(message)
             elif rdcp_messagetype == "0x10":
                 if rdcp_destination != "0xFFFF":
-                    print(color[colorstring] + "RDCP Private OA  : " + color["normal"], end="" )
+                    print(
+                        color[colorstring] + "RDCP Private OA  : " + color["normal"],
+                        end="",
+                    )
                     aeskey = getSharedSecret(rdcp_destination)
                     if aeskey == None:
-                        print(color["red"] + "No key material available, cannot decrypt" + color["normal"])
+                        print(
+                            color["red"]
+                            + "No key material available, cannot decrypt"
+                            + color["normal"]
+                        )
                         return
 
                     iv = bytearray()
@@ -823,9 +868,15 @@ def pretty_print_rdcp(m, colorstring="normal"):
 
                     aesgcm = AESGCM(aeskey)
                     try:
-                        payload = aesgcm.decrypt(bytes(iv), bytes(ciphertext), bytes(ad))
+                        payload = aesgcm.decrypt(
+                            bytes(iv), bytes(ciphertext), bytes(ad)
+                        )
                     except:
-                        print(color["red"] + "Authentication / decryption failed. Bad message or key material." + color["normal"])
+                        print(
+                            color["red"]
+                            + "Authentication / decryption failed. Bad message or key material."
+                            + color["normal"]
+                        )
                         return
 
                     subtype = payload[0]
@@ -840,13 +891,13 @@ def pretty_print_rdcp(m, colorstring="normal"):
                             lifetime,
                         )
                     else:
-                        if (subtype == 0x10):
+                        if subtype == 0x10:
                             print("Private Non-Crisis ", end="")
-                        elif (subtype == 0x20):
+                        elif subtype == 0x20:
                             print("Public Crisis ", end="")
-                        elif (subtype == 0x30):
+                        elif subtype == 0x30:
                             print("FEEDBACK ", end="")
-                        elif (subtype == 0x31):
+                        elif subtype == 0x31:
                             print("INQUIRY ", end="")
                         print(
                             "OA with RefNr",
@@ -876,13 +927,14 @@ def pretty_print_rdcp(m, colorstring="normal"):
                             lifetime,
                         )
                     if (subtype == 0x10) or (subtype == 0x20):
-                        if (subtype == 0x10):
+                        if subtype == 0x10:
                             print("Public Non-Crisis ", end="")
                         else:
                             print("Public Crisis ", end="")
                         print(
                             "OA with RefNr",
-                            reference_number, hex(reference_number).upper(),
+                            reference_number,
+                            hex(reference_number).upper(),
                             "Lifetime",
                             lifetime,
                             "MoreFrag",
@@ -894,16 +946,43 @@ def pretty_print_rdcp(m, colorstring="normal"):
                             udecoded,
                         )
             elif rdcp_messagetype == "0x30":
-                print(color[colorstring] + "RDCP Signature   : " + color["normal"], end="")
+                print(
+                    color[colorstring] + "RDCP Signature   : " + color["normal"], end=""
+                )
                 reference_number = 256 * int(rdcp[17]) + int(rdcp[16])
                 signature = rdcp[18:]
-                hexstring1 = ''.join('{:02X}'.format(x) for x in signature[0:33])
-                hexstring2 = ''.join('{:02X}'.format(x) for x in signature[33:])
+                hexstring1 = "".join("{:02X}".format(x) for x in signature[0:33])
+                hexstring2 = "".join("{:02X}".format(x) for x in signature[33:])
                 hexstring_of_signature = hexstring1 + ":" + hexstring2
                 print("RefNr", reference_number, "SchorrSig:", hexstring_of_signature)
 
             elif rdcp_messagetype == "0x32":
                 pass
+
+            elif rdcp_messagetype == "0x40":
+                print(
+                    color[colorstring] + "RDCP Tunnel      : " + color["normal"], end=""
+                )
+                initial_rc = rdcp[16]
+                tunnel_type = rdcp[17]
+                if tunnel_type == 0:
+                    tunnel_type = "LoRaWAN"
+                elif tunnel_type == 1:
+                    tunnel_type = "IPv4"
+                elif tunnel_type == 2:
+                    tunnel_type = "IPv6"
+                elif tunnel_type == 3:
+                    tunnel_type = "LocalSensor"
+                tunneled_data = rdcp[18:]
+                hexstring1 = "".join("{:02X}".format(x) for x in tunneled_data[:])
+                print(
+                    "InitialRC",
+                    initial_rc,
+                    "Data Type:",
+                    tunnel_type,
+                    "Payload:",
+                    hexstring1,
+                )
 
             else:
                 print(
@@ -927,7 +1006,14 @@ def pretty_print_rdcp(m, colorstring="normal"):
                     + color["normal"]
                 )
     except Exception as e:
-        print(color["red"] + "Payload printing failed" + color["normal"] + " (error: " + str(e) + ")")
+        print(
+            color["red"]
+            + "Payload printing failed"
+            + color["normal"]
+            + " (error: "
+            + str(e)
+            + ")"
+        )
 
     return
 
