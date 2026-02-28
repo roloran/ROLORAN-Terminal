@@ -29,7 +29,6 @@ from time import sleep
 
 if platform.system() == "Windows":
     import pyreadline3
-
     readline = pyreadline3.Readline()
 else:
     try:
@@ -63,10 +62,12 @@ device = os.environ.get("LORADEV", "/dev/cu.usbmodem1201")
 use_ble = False
 history_filename = ".lora_history"
 log_filename = ".lora_logfile"
+rdcpcsv_filename = ".lora_rdcpcsv"
 script_glob = "*.rterm"
 
 enable_logfile = 1
 enable_history = 1
+enable_rdcpcsv = 1
 script_line_delay = 1
 
 abort_globally = 0
@@ -95,6 +96,7 @@ def rterm_setup(filename):
     global device
     global history_filename
     global log_filename
+    global rdcpcsv_filename
     global use_ble
 
     candidates = []
@@ -143,9 +145,11 @@ def rterm_setup(filename):
     suffix = suffix.replace(":", "_")
     history_filename += "." + suffix
     log_filename += "." + suffix
+    rdcpcsv_filename += "." + suffix
 
     print("History file:", history_filename)
-    print("Logfile name:", log_filename, "\n")
+    print("Logfile name:", log_filename)
+    print("RDCPCSV name:", rdcpcsv_filename, "\n")
 
 
 def write_logfile(line):
@@ -157,6 +161,15 @@ def write_logfile(line):
         with open(log_filename, "a") as f:
             f.write(line + "\n")
 
+
+def write_rdcpcsv(line):
+    """Append a line of text to the RDCPCSV logfile"""
+    global rdcpcsv_filename
+    global enable_rdcpcsv
+
+    if enable_rdcpcsv == 1:
+        with open(rdcpcsv_filename, "a") as f:
+            f.write(line + "\n")
 
 def craft(cmd):
     """Execute a command in CRAFT mode"""
@@ -349,6 +362,8 @@ def modem_thread():
                 ct = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 logfile_line = "[" + ct + "] " + l
                 write_logfile(logfile_line)
+                if logfile_line.find("RDCPCSV:") != -1:
+                    write_rdcpcsv(logfile_line)
                 l = color["normal"] + logfile_line
                 regex = r"^([a-zA-Z0-9-{} !?:]+: )(ECHO: |INFO: |WARNING: |ERROR: |RXMETA |RX |TXMETA |TX ).*$"
                 if re.search(regex, original_line):
