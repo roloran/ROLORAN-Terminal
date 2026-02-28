@@ -105,6 +105,10 @@ def getmt(mt):
         result = "FETCHALL"
     elif mt == "2A":
         result = "RECEIPT"
+    elif mt == "40":
+        result = "TUNNEL"
+    elif mt == "41":
+        result = "BEACON"
     return result
 
 def getrelaybyid(id):

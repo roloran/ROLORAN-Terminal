@@ -5,7 +5,6 @@ import platform
 
 if platform.system() == "Windows":
     import pyreadline3
-
     readline = pyreadline3.Readline()
 else:
     try:
@@ -66,6 +65,7 @@ rdcp_msgtypes = {
     0x31: "RDCP Heartbeat",
     0x32: "RDCP RTC",
     0x40: "RDCP Tunnel",
+    0x41: "RDCP Roaming Beacon",
 }
 
 
