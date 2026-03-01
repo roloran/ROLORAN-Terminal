@@ -25,7 +25,9 @@ import os
 import platform
 import re
 import threading
-from time import sleep
+from time import sleep, time_ns
+import asyncio
+from contextlib import suppress
 
 if platform.system() == "Windows":
     import pyreadline3
@@ -40,6 +42,7 @@ import datetime
 import sys
 
 import serial
+import signal
 
 import rdcpcodec
 
@@ -63,15 +66,25 @@ use_ble = False
 history_filename = ".lora_history"
 log_filename = ".lora_logfile"
 rdcpcsv_filename = ".lora_rdcpcsv"
+alaaf_read_path = ".alaaf_read/"
+alaaf_write_path = ".alaaf_write/"
+lars_ip = "127.0.0.1"
+lars_port = "2255"
 script_glob = "*.rterm"
 
 enable_logfile = 1
 enable_history = 1
 enable_rdcpcsv = 1
+enable_alaaf_write = 0
+enable_alaaf_read = 1
+enable_lars = 1
 script_line_delay = 1
+
+lars_clients = set()
 
 abort_globally = 0
 forced_exit = 0
+global server
 
 inject_has = False
 inject_filename = ""
@@ -97,6 +110,7 @@ def rterm_setup(filename):
     global history_filename
     global log_filename
     global rdcpcsv_filename
+    global alaaf_read_path, alaaf_write_path, lars_ip, lars_port, enable_alaaf_write, enable_alaaf_read, enable_lars
     global use_ble
 
     candidates = []
@@ -147,9 +161,22 @@ def rterm_setup(filename):
     log_filename += "." + suffix
     rdcpcsv_filename += "." + suffix
 
-    print("History file:", history_filename)
-    print("Logfile name:", log_filename)
-    print("RDCPCSV name:", rdcpcsv_filename, "\n")
+    if enable_history:
+        print("History file:", history_filename)
+    if enable_logfile:
+        print("Logfile name:", log_filename)
+    if enable_alaaf_write:
+        print("ALAAF output:", alaaf_write_path)
+    if enable_alaaf_read:
+        print("ALAAF input:", alaaf_read_path)
+    if enable_lars:
+        print("LARS: Listening on IP", lars_ip, "Port", lars_port)
+    if enable_rdcpcsv:
+        print("RDCPCSV name:", rdcpcsv_filename, "\n")
+
+    if enable_alaaf_write:
+        if not os.path.exists(alaaf_write_path):
+            os.makedirs(alaaf_write_path)
 
 
 def write_logfile(line):
@@ -170,6 +197,27 @@ def write_rdcpcsv(line):
     if enable_rdcpcsv == 1:
         with open(rdcpcsv_filename, "a") as f:
             f.write(line + "\n")
+
+
+def write_alaaf_out(rxmetaline, rxline):
+    """Write a received LoRa packet to the ALAAF out directory"""
+    global alaaf_write_path
+    global enable_alaaf_write
+
+    if enable_alaaf_write == 0:
+        return
+
+    fnbase = alaaf_write_path + str(time_ns())
+
+    filename_tmp = fnbase + ".prep"
+    filename_final = fnbase + ".alaaf"
+
+    with open(filename_tmp, "a") as f:
+        f.write(rxmetaline + "\n" + rxline + "\n")
+
+    os.rename(filename_tmp, filename_final)
+    return
+
 
 def craft(cmd):
     """Execute a command in CRAFT mode"""
@@ -336,6 +384,9 @@ def modem_thread():
     global ser
     global device
     global use_ble
+    global enable_lars
+
+    most_recent_rxmeta_line = ""
 
     while True:
         line = ""
@@ -364,6 +415,12 @@ def modem_thread():
                 write_logfile(logfile_line)
                 if logfile_line.find("RDCPCSV:") != -1:
                     write_rdcpcsv(logfile_line)
+                if logfile_line.find("RXMETA ") != -1:
+                    most_recent_rxmeta_line = l
+                if logfile_line.find("RX ") != -1:
+                    write_alaaf_out(most_recent_rxmeta_line, l)
+                if enable_lars == 1:
+                    asyncio.run(server_thread_broadcast((logfile_line + "\n").encode("utf-8"), None))
                 l = color["normal"] + logfile_line
                 regex = r"^([a-zA-Z0-9-{} !?:]+: )(ECHO: |INFO: |WARNING: |ERROR: |RXMETA |RX |TXMETA |TX ).*$"
                 if re.search(regex, original_line):
@@ -434,6 +491,7 @@ def script_thread():
     global use_ble
     global script_line_delay
     global inject_has, inject_filename
+    global alaaf_read_path, enable_alaaf_read
     while True:
         if forced_exit == 1:
             break
@@ -466,6 +524,107 @@ def script_thread():
                     sleep(script_line_delay)
                 readline.redisplay()
             os.rename(fn, fn + ".done")
+        if enable_alaaf_read == 0:
+            continue
+        alaaf_glob = alaaf_read_path + "*.alaaf"
+        for fn in glob.glob(alaaf_glob):
+            with open(fn, "r") as f:
+                sys.stdout.write("\r\x1b[K")
+                print(color["magenta"] + "Injecting ALAAF " + fn + "...")
+                for l in f:
+                    print("> " + l, end="")
+                    if use_ble:
+                        ble_tx(l)
+                    else:
+                        ser.write(str.encode(l))
+                    sleep(script_line_delay)
+                readline.redisplay()
+            os.rename(fn, fn + ".done")
+
+
+async def server_thread_broadcast(data: bytes, sender: asyncio.StreamWriter | None = None) -> None:
+    """Send a line to all LARS clients"""
+    global lars_clients, ser, use_ble, forced_exit, abort_globally, server
+
+    lost_clients = []
+    for w in lars_clients:
+        if sender is not None and w is sender:
+            continue
+        try:
+            w.write(data)
+            await w.drain()
+        except ConnectionError:
+            lost_clients.append(w)
+
+    if sender is not None:
+        l = data.decode("utf-8", errors="replace").rstrip()
+        if l == "":
+            l = " "
+        print("> " + l, end="\n")
+        if use_ble:
+            ble_tx(l)
+        else:
+            ser.write(str.encode(l))
+        readline.redisplay()
+
+    for w in lost_clients:
+        lars_clients.discard(w)
+        with suppress(Exception):
+            w.close()
+            await w.wait_closed()
+
+
+async def server_thread_handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    peer = writer.get_extra_info("peername")
+    lars_clients.add(writer)
+
+    join_msg = f"New LARS peer connected: {peer}\n".encode("utf-8")
+    print("*** New LARS connection:", peer)
+    await server_thread_broadcast(join_msg, sender=None)
+
+    buf = bytearray()
+    try:
+        while True:
+            chunk = await reader.read(4096)
+            if not chunk:
+                break
+            buf += chunk
+            while True:
+                nl = buf.find(b"\n")
+                if nl == -1:
+                    break
+                line = bytes(buf[: nl + 1])
+                del buf[: nl + 1]
+                print(f"LARS {peer}: {line.decode('utf-8', errors='replace')}", end="")
+                await server_thread_broadcast(line, sender=writer)
+
+    finally:
+        lars_clients.discard(writer)
+        with suppress(Exception):
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except:
+                pass
+
+        leave_msg = f"LARS peer disconnected: {peer}\n".encode("utf-8")
+        print("*** LARS client disconnected:", peer)
+        await server_thread_broadcast(leave_msg, sender=None)
+
+
+async def server_thread_bootstrap():
+    global lars_ip, lars_port, server
+    server = await asyncio.start_server(server_thread_handle_client, lars_ip, lars_port)
+    async with server:
+        await server.serve_forever()
+    return
+
+
+def server_thread():
+    """LARS"""
+    global forced_exit, abort_globally
+    asyncio.run(server_thread_bootstrap())
+    return
 
 
 if __name__ == "__main__":
@@ -501,12 +660,20 @@ if __name__ == "__main__":
     t1 = threading.Thread(target=keyboard_thread)
     t2 = threading.Thread(target=modem_thread)
     t3 = threading.Thread(target=script_thread)
+    if enable_lars == 1:
+        t4 = threading.Thread(target=server_thread)
+
     t1.start()
     t2.start()
     t3.start()
+    if enable_lars == 1:
+        t4.start()
+
     t1.join()
     t2.join()
     t3.join()
+    # if enable_lars == 1:
+    #    t4.join()
 
     if use_ble:
         t0.join()
@@ -515,6 +682,8 @@ if __name__ == "__main__":
         readline.write_history_file(history_filename)
 
     print("Connection to", device, "finished")
+
+    os.kill(os.getpid(), signal.SIGTERM)
     sys.exit(0)
 
 # EOF
