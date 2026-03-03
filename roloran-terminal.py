@@ -68,8 +68,8 @@ log_filename = ".lora_logfile"
 rdcpcsv_filename = ".lora_rdcpcsv"
 alaaf_read_path = ".alaaf_read/"
 alaaf_write_path = ".alaaf_write/"
-lars_ip = "127.0.0.1"
-lars_port = "2255"
+lars_ip = os.environ.get("LARSIP", "127.0.0.1")
+lars_port = os.environ.get("LARSPORT", "2255")
 script_glob = "*.rterm"
 
 enable_logfile = 1
@@ -79,6 +79,9 @@ enable_alaaf_write = 0
 enable_alaaf_read = 1
 enable_lars = 1
 script_line_delay = 1
+
+if lars_port == "0":
+    enable_lars = 0
 
 lars_clients = set()
 
