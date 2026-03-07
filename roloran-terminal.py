@@ -88,6 +88,7 @@ lars_clients = set()
 abort_globally = 0
 forced_exit = 0
 global server
+paused = False
 
 inject_has = False
 inject_filename = ""
@@ -332,6 +333,7 @@ def keyboard_thread():
     global use_ble
     global current_mode
     global inject_has, inject_filename
+    global paused
 
     while True:
         if abort_globally == 1:
@@ -350,6 +352,17 @@ def keyboard_thread():
             print(color["red"] + "Stopping terminal application...")
             forced_exit = 1
             break
+        if line == "pause":
+            paused = True
+            print("*** PAUSING ****")
+            sleep(1)
+            ser.close()
+            print("*** PAUSED ****")
+            continue
+        if paused:
+            paused = False
+            print("*** UNPAUSED ***")
+            continue
         if abort_globally == 0:
             if current_mode == MODE_INTERACTIVE:
                 if line == "craft":
@@ -388,6 +401,7 @@ def modem_thread():
     global device
     global use_ble
     global enable_lars
+    global paused
 
     most_recent_rxmeta_line = ""
 
@@ -404,6 +418,8 @@ def modem_thread():
                 if ble_rx_available():
                     line = str.encode(ble_rx_get())
             else:
+                if paused:
+                    raise Exception
                 line = ser.readline()
             if len(line) > 1:
                 l = ""
@@ -452,14 +468,18 @@ def modem_thread():
                 print(l)
                 readline.redisplay()
         except:
-            abort_globally = 1
+            if not paused:
+                abort_globally = 1
             print(color["red"] + "Serial read failed - lost connection?")
             if not use_ble:
-                ser.close()
+                if not paused:
+                    ser.close()
             else:
                 sys.exit(1)
             while True:
                 try:
+                    while paused:
+                        sleep(1)
                     print(color["red"] + "Attempting to reconnect...")
                     ser = serial.Serial(port=device, baudrate=115200, timeout=1)
                     print(color["green"] + "Reconnected")
