@@ -300,11 +300,11 @@ if __name__ == "__main__":
                 # Check if output should be appended or overwritten
                 if args.append and os.path.exists(output_file):
                     with open(output_file, 'a') as f:
-                        f.writelines(csv_lines)
+                        f.writelines(lines)
                 else:
                     with open(output_file, 'w') as f:
                         f.write(header + "\n")
-                        f.writelines(csv_lines)
+                        f.writelines(lines)
 
     else:
         # Print to standard output
