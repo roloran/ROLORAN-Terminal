@@ -68,6 +68,8 @@ rdcp_msgtypes = {
     0x41: "RDCP Roaming Beacon",
 }
 
+DASR_FILENAME = ".dalog.csv"
+ENABLE_DASR_LOG = True
 
 def hex_duo(b):
     """Convert a hex number into a two-digit uppercase hex string with 0x prefix"""
@@ -645,6 +647,61 @@ def getSchnorrVerification(rdcp, num_bytes):
 
     return verification
 
+dasr_dupe_table = { '0x0200':0, '0x0201':0, '0x0202':0, '0x0203':0, '0x0204':0, '0x0205':0, '0x0206':0, '0x0207':0, '0x0208':0, '0x0209':0 }
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from pathlib import Path
+
+def check_and_log_dasr(rdcp_origin, rdcp_seqnr, rdcp, colorstring="normal"):
+    if rdcp_origin not in dasr_dupe_table:
+        print("ERROR: DA Status Response Origin " + rdcp_origin + " not in duplicate table")
+        return
+    if dasr_dupe_table[rdcp_origin] >= rdcp_seqnr:
+        print(color[colorstring] + "RDCP DA St. Resp : " + color["normal"] + "(duplicate)")
+        return
+    dasr_dupe_table[rdcp_origin] = rdcp_seqnr
+
+    # time,origin,battery_esp,battery_raspi,unique_forwarded_messages,unique_mobile_devices,unique_received_messages,0100,0101,0102,0103,0104,0105,0106,0107,0108,0109,0200,0201,0202,0203,0204,0205,0206,0207,0208,0209
+    timestamp = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M")
+    origin = rdcp_origin[2:]
+    battery_esp   = int(rdcp[16+1])
+    battery_raspi = int(rdcp[16+2])
+    unique_received_messages  = int(rdcp[16+4]) * 256 + int(rdcp[16+3])
+    unique_forwarded_messages = int(rdcp[16+6]) * 256 + int(rdcp[16+5])
+    unique_mobile_devices     = int(rdcp[16+8]) * 256 + int(rdcp[16+7])
+    num_das = (len(rdcp) - 9 - 16) // 4
+    report = {}
+    for i in range (0, num_das):
+        neighbor = int(rdcp[16 + 9 + 4*i + 0]) + 256 * int(rdcp[16 + 9 + 4*i + 1])
+        rssi = int(rdcp[16 + 9 + 4*i + 2]) - 200
+        snr = int(rdcp[16 + 9 + 4*i + 3]) - 100
+        report[neighbor] = rssi
+    rssi_line = ""
+    short_rssi_line = "868 MHz: "
+    for x in [256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 512, 513, 514, 515, 516, 517, 518, 519, 520, 521]:
+        rssi_line += ","
+        if x == 512:
+            short_rssi_line += "433 MHz: "
+        if x in report:
+            rssi_line += str(report[x])
+            short_rssi_line += str(report[x])
+            short_rssi_line += " "
+        else:
+            short_rssi_line += "n/a "
+    full_report_line = timestamp + "," + origin + "," + str(battery_esp) + "," + str(battery_raspi) + "," + str(unique_forwarded_messages) + "," + str(unique_mobile_devices) + "," + str(unique_received_messages) + rssi_line
+    short_report_line = rdcp_origin + " Batteries: " + str(battery_esp) + " " + str(battery_raspi) + ", Neighbors: " + short_rssi_line
+    print(color[colorstring] + "RDCP DA St. Resp : " + color["normal"] + short_report_line) 
+
+    if ENABLE_DASR_LOG == True:
+        logfile_exists = False
+        if Path(DASR_FILENAME).exists():
+            logfile_exists = True
+        with open(DASR_FILENAME, "a", encoding="utf-8") as lf:
+            if logfile_exists == False:
+                print("time,origin,battery_esp,battery_raspi,unique_forwarded_messages,unique_mobile_devices,unique_received_messages,0100,0101,0102,0103,0104,0105,0106,0107,0108,0109,0200,0201,0202,0203,0204,0205,0206,0207,0208,0209", file=lf)
+            print(full_report_line, file=lf)
+
+    return
 
 def pretty_print_rdcp(m, colorstring="normal"):
     """Pretty-print an RDCP message in a given color"""
@@ -738,6 +795,9 @@ def pretty_print_rdcp(m, colorstring="normal"):
                     color[colorstring] + "RDCP ACK property: " + color["normal"], end=""
                 )
                 print("RefNr", hex_quad(confirmed), "AckType", acktype, sigstatus)
+
+            elif rdcp_messagetype == "0x06": # DA Status Response 
+                check_and_log_dasr(rdcp_origin, rdcp_seqnr_decimal, rdcp)
 
             elif rdcp_messagetype == "0x0A":  # TIMESTAMP
                 sigstatus = "(unsigned)"
