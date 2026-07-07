@@ -181,6 +181,10 @@ def format_log_line_to_csv_line(line: str) -> Union[str,None]:
             # Highlight malformed lines
             return f"{date}, {timestamp}\n"
 
+    sender_int = int(sender, 16)
+    origin_int = int(origin, 16)
+    relay3_int = int(r3, 16)
+
     timeslot = 8 - int(futts)
     osender = sender
     sender = getname(sender)
@@ -195,6 +199,14 @@ def format_log_line_to_csv_line(line: str) -> Union[str,None]:
 
     if (timeslot == 8 or timeslot == 0) and frequency[0] == '8':
         timeslot = "single"
+
+    if frequency == "869.525":
+        if (sender_int == origin_int) and (sender_int >= 0x0200 and sender_int <= 0x02FF):
+            sender = "DA " + sender
+        elif (sender_int >= 0x0200 and sender_int <= 0x02FF) and (relay3_int == 0xEE):
+            sender = "FR " + sender 
+        elif (sender_int >= 0x0200 and sender_int <= 0x02FF) and (relay3_int == 0xDE):
+            sender = "EP " + sender 
 
     content = [
         date,
