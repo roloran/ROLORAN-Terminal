@@ -203,10 +203,19 @@ def format_log_line_to_csv_line(line: str) -> Union[str,None]:
     if frequency == "869.525":
         if (sender_int == origin_int) and (sender_int >= 0x0200 and sender_int <= 0x02FF):
             sender = "DA " + sender
+            relay1 = "(DA itself local EE)"
+            relay2 = relay1
+            relay3 = relay1
         elif (sender_int >= 0x0200 and sender_int <= 0x02FF) and (relay3_int == 0xEE):
             sender = "FR " + sender 
+            relay1 = "(Forward locally EE)"
+            relay2 = relay1
+            relay3 = relay1
         elif (sender_int >= 0x0200 and sender_int <= 0x02FF) and (relay3_int == 0xDE):
             sender = "EP " + sender 
+            relay1 = "(EP echo DE)"
+            relay2 = relay1
+            relay3 = relay1
 
     content = [
         date,
