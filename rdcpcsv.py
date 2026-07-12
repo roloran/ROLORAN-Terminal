@@ -216,6 +216,11 @@ def format_log_line_to_csv_line(line: str) -> Union[str,None]:
             relay1 = "(EP echo DE)"
             relay2 = relay1
             relay3 = relay1
+        elif (sender_int >= 0x0200 and sender_int <= 0x02FF) and (relay3_int == 0xCE):
+            sender = "DA " + sender 
+            relay1 = "(periodics CE)"
+            relay2 = relay1
+            relay3 = relay1
 
     content = [
         date,
