@@ -75,6 +75,8 @@ def getmt(mt):
         result = "Signature"
     elif mt == "31":
         result = "Heartbeat"
+    elif mt == "32":
+        result = "RTC"
     elif mt == "0A":
         result = "Timestamp"
     elif mt == "0B":
@@ -207,17 +209,17 @@ def format_log_line_to_csv_line(line: str) -> Union[str,None]:
             relay2 = relay1
             relay3 = relay1
         elif (sender_int >= 0x0200 and sender_int <= 0x02FF) and (relay3_int == 0xEE):
-            sender = "FR " + sender 
+            sender = "FR " + sender
             relay1 = "(Forward locally EE)"
             relay2 = relay1
             relay3 = relay1
         elif (sender_int >= 0x0200 and sender_int <= 0x02FF) and (relay3_int == 0xDE):
-            sender = "EP " + sender 
+            sender = "EP " + sender
             relay1 = "(EP echo DE)"
             relay2 = relay1
             relay3 = relay1
         elif (sender_int >= 0x0200 and sender_int <= 0x02FF) and (relay3_int == 0xCE):
-            sender = "DA " + sender 
+            sender = "DA " + sender
             relay1 = "(periodics CE)"
             relay2 = relay1
             relay3 = relay1
@@ -340,7 +342,7 @@ if __name__ == "__main__":
 
     # Check if log file should be saved
     if args.keep:
-        
+
         # Check if directory exists
         if not os.path.isdir(args.keep):
             print("Keep directory does not exist:", args.keep)
@@ -364,11 +366,11 @@ if __name__ == "__main__":
                                 date_dict[date].append(line)
                 else:
                     date_dict["all"] = log_lines
-                    
+
             # Create output files
             for date, lines in date_dict.items():
                 output_file = os.path.join(args.keep, f"{date}-{name}.log")
-                
+
                 # Check if output should be appended or overwritten
                 if args.append and os.path.exists(output_file):
                     with open(output_file, 'a') as f:
