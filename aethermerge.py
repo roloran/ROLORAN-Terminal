@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import glob
 import sys
 import tempfile
 from dataclasses import dataclass, field
@@ -147,7 +148,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="INPUT",
         nargs="*",
         type=Path,
-        help="input CSV file; pass at least two",
+        help="input CSV file or wildcard pattern; pass at least two files",
     )
     parser.add_argument(
         "-o",
@@ -162,6 +163,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="replace OUTPUT if it already exists",
     )
     return parser
+
+
+def expand_input_patterns(inputs: Iterable[Path]) -> list[Path]:
+    """Expand shell-style wildcard patterns that reached the application unchanged."""
+    expanded_inputs: list[Path] = []
+
+    for input_path in inputs:
+        pattern = str(input_path)
+        if not glob.has_magic(pattern):
+            expanded_inputs.append(input_path)
+            continue
+
+        matches = sorted(glob.glob(pattern))
+        if not matches:
+            raise InputFileError(f"input pattern matched no files: {input_path}")
+
+        expanded_inputs.extend(Path(match) for match in matches)
+
+    return expanded_inputs
 
 
 def validate_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> bool:
@@ -415,6 +435,12 @@ def format_stats_table(stats: MergeStats) -> str:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    try:
+        args.inputs = expand_input_patterns(args.inputs)
+    except InputFileError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
     if not validate_args(args, parser):
         return 2
