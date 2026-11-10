@@ -1014,7 +1014,7 @@ def pretty_print_rdcp(m, colorstring="normal"):
                 hexstring1 = "".join("{:02X}".format(x) for x in signature[0:33])
                 hexstring2 = "".join("{:02X}".format(x) for x in signature[33:])
                 hexstring_of_signature = hexstring1 + ":" + hexstring2
-                print("RefNr", reference_number, "SchorrSig:", hexstring_of_signature)
+                print("RefNr", reference_number, "SchnorrSig:", hexstring_of_signature)
 
             elif rdcp_messagetype == "0x32":
                 pass
